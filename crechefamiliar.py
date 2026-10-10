@@ -484,29 +484,30 @@ elif menu == "👤 Ficha da Ama":
                     coabitantes_linhas.append(f"{c_nome} ({c_parent}) - Prof: {c_prof}")
 
             submit_ama = st.form_submit_button("💾 Guardar Ficha da Ama")
-            
-            if submit_ama:
-                if nome_completo:
-                    coabitantes_str = " | ".join(coabitantes_linhas)
-                    conn = get_db_connection()
-                    c = conn.cursor()
-                    c.execute('''INSERT INTO ficha_ama 
-                               (crss, decreto, nome_completo, naturalidade, data_nascimento, estado_civil, morada, 
-                                contactos, sabe_ler_escrever, habilitacoes_literarias, habilitacoes_profissionais, 
-                                habilitacoes_complementares, experiencia_anterior, desempregada, motivo_desemprego, 
-                                motivacao_atividade, tipo_casa, num_divisoes, regime_casa, coabitantes, arquivada)
-                               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, 0)''',
-                              (crss, decreto, nome_completo, naturalidade, str(data_nascimento), estado_civil, morada,
-                               contactos, sabe_ler_escrever, habilitacoes_literarias, habilitacoes_profissionais,
-                               habilitacoes_complementares, experiencia_anterior, desempregada, motivo_desemprego,
-                               motivacao_atividade, tipo_casa, num_divisoes, regime_casa, coabitantes_str))
-                    conn.commit()
-                    c.close()
-                    conn.close()
-                    st.success(f"Ficha da ama {nome_completo} guardada com sucesso!")
-                    st.rerun()
-                else:
-                    st.error("O Nome Completo da Ama é obrigatório.")
+
+        # 👉 O IF FICA FORA DO WITH ST.FORM (alinhado com o 'with st.form')
+        if submit_ama:
+            if nome_completo:
+                coabitantes_str = " | ".join(coabitantes_linhas)
+                conn = get_db_connection()
+                c = conn.cursor()
+                c.execute('''INSERT INTO ficha_ama 
+                           (crss, decreto, nome_completo, naturalidade, data_nascimento, estado_civil, morada, 
+                            contactos, sabe_ler_escrever, habilitacoes_literarias, habilitacoes_profissionais, 
+                            habilitacoes_complementares, experiencia_anterior, desempregada, motivo_desemprego, 
+                            motivacao_atividade, tipo_casa, num_divisoes, regime_casa, coabitantes, arquivada)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, 0)''',
+                          (crss, decreto, nome_completo, naturalidade, str(data_nascimento), estado_civil, morada,
+                           contactos, sabe_ler_escrever, habilitacoes_literarias, habilitacoes_profissionais,
+                           habilitacoes_complementares, experiencia_anterior, desempregada, motivo_desemprego,
+                           motivacao_atividade, tipo_casa, num_divisoes, regime_casa, coabitantes_str))
+                conn.commit()
+                c.close()
+                conn.close()
+                st.success(f"Ficha da ama {nome_completo} guardada com sucesso!")
+                st.rerun()
+            else:
+                st.error("O Nome Completo da Ama é obrigatório.")
 
     with aba_ama_2:
         st.subheader("🔍 Consultar e Gerir Fichas de Amas")
@@ -626,6 +627,7 @@ elif menu == "📄 Ficha da Criança":
 
             submit_crianca = st.form_submit_button("💾 Guardar Ficha da Criança")
 
+        # 👉 O IF FICA FORA DO WITH ST.FORM (alinhado com o 'with st.form')
         if submit_crianca:
             if nome_completo:
                 # Conversão da Fotografia para Base64
