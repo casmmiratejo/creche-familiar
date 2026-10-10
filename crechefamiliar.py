@@ -185,6 +185,7 @@ def init_db():
     conn.commit()
     c.close()
     conn.close()
+    st.cache_data.clear()
 
 init_db()
 
@@ -206,42 +207,53 @@ def get_amas(incluir_arquivadas=False):
 
 AMAS = get_amas()
 
-def get_criancas(ama_filtro=None, incluir_arquivadas=False):
+
+@st.cache_data(ttl=60)
+def get_criancas(ama_filtro=None, incluir_arquivadas=False, role="", username=""):
     conn = get_db_connection()
-    
-    # 🔒 VERIFICAÇÃO DE SEGURANÇA POR PERFIL
-    role = st.session_state.get('role', '')
-    username = st.session_state.get('username', '')
-    
-    if role == "Pais":
-        # Se for Pai/Mãe, só pode ver as crianças cujo nome do pai ou da mãe corresponda ao username
-        if incluir_arquivadas:
-            df = pd.read_sql_query(
-                "SELECT nome_completo FROM ficha_crianca WHERE pai_nome = %s OR mae_nome = %s", 
-                conn, params=(username, username)
-            )
-        else:
-            df = pd.read_sql_query(
-                "SELECT nome_completo FROM ficha_crianca WHERE (pai_nome = %s OR mae_nome = %s) AND arquivada = 0", 
-                conn, params=(username, username)
-            )
-    else:
-        # Administradores, Educadoras e Amas têm acesso global (ou filtrado por ama)
-        if ama_filtro:
+    try:
+        # Consulta cirúrgica: traz APENAS o nome, ignorando fotos e PDFs pesados!
+        if role == "Pais":
             if incluir_arquivadas:
-                df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca WHERE ama_responsavel = %s", conn, params=(ama_filtro,))
+                df = pd.read_sql_query(
+                    "SELECT nome_completo FROM ficha_crianca WHERE pai_nome = %s OR mae_nome = %s", 
+                    conn, params=(username, username)
+                )
             else:
-                df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca WHERE ama_responsavel = %s AND arquivada = 0", conn, params=(ama_filtro,))
+                df = pd.read_sql_query(
+                    "SELECT nome_completo FROM ficha_crianca WHERE (pai_nome = %s OR mae_nome = %s) AND arquivada = 0", 
+                    conn, params=(username, username)
+                )
         else:
-            if incluir_arquivadas:
-                df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca", conn)
+            if ama_filtro:
+                if incluir_arquivadas:
+                    df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca WHERE ama_responsavel = %s", conn, params=(ama_filtro,))
+                else:
+                    df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca WHERE ama_responsavel = %s AND arquivada = 0", conn, params=(ama_filtro,))
             else:
-                df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca WHERE arquivada = 0", conn)
-                
-    conn.close()
+                if incluir_arquivadas:
+                    df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca", conn)
+                else:
+                    df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca WHERE arquivada = 0", conn)
+    finally:
+        conn.close()
+        
     if df.empty:
         return []
     return df["nome_completo"].tolist()
+
+
+@st.cache_data(ttl=60)
+def get_amas():
+    conn = get_db_connection()
+    try:
+        df = pd.read_sql_query("SELECT nome_completo FROM ficha_ama", conn)
+    finally:
+        conn.close()
+    if df.empty:
+        return []
+    return df["nome_completo"].tolist()
+
 def gerar_qr_code(texto):
     qr = qrcode.QRCode(version=1, box_size=10, border=5)
     qr.add_data(texto)
@@ -408,6 +420,7 @@ if menu == "📱 Check-in QR Code (Entrada/Saída)":
                 conn.commit()
                 c.close()
                 conn.close()
+                st.cache_data.clear()
                 st.success(f"Entrada de **{crianca_checkin}** registada às {hora_atual_str} (Validado por {quem_valida})!")
                 
             if c_btn2.button("🔴 SAÍDA", use_container_width=True):
@@ -428,6 +441,7 @@ if menu == "📱 Check-in QR Code (Entrada/Saída)":
                 conn.commit()
                 c.close()
                 conn.close()
+                st.cache_data.clear()
                 st.warning(f"Saída de **{crianca_checkin}** registada às {hora_atual_str} (Validado por {quem_valida})!")
         else:
             st.info("ℹ️ O registo oficial de entradas e saídas é efetuado exclusivamente pela equipa da creche.")
@@ -521,6 +535,7 @@ elif menu == "👤 Ficha da Ama":
                 conn.commit()
                 c.close()
                 conn.close()
+                st.cache_data.clear()
                 st.success(f"Ficha da ama {nome_completo} guardada com sucesso!")
                 st.rerun()
             else:
@@ -581,6 +596,7 @@ elif menu == "👤 Ficha da Ama":
                         conn.commit()
                         c.close()
                         conn.close()
+                        st.cache_data.clear()
                         st.success("Ama arquivada com sucesso!")
                         st.rerun()
                 else:
@@ -591,6 +607,7 @@ elif menu == "👤 Ficha da Ama":
                         conn.commit()
                         c.close()
                         conn.close()
+                        st.cache_data.clear()
                         st.success("Ama desarquivada com sucesso!")
                         st.rerun()
         else:
@@ -673,6 +690,7 @@ elif menu == "📄 Ficha da Criança":
                 conn.commit()
                 c.close()
                 conn.close()
+                st.cache_data.clear()
                 st.success(f"Ficha de {nome_completo} guardada com sucesso!")
                 st.rerun()
             else:
@@ -756,6 +774,7 @@ elif menu == "📄 Ficha da Criança":
                         conn.commit()
                         c.close()
                         conn.close()
+                        st.cache_data.clear()
                         st.success("Criança arquivada com sucesso!")
                         st.rerun()
                 else:
@@ -766,6 +785,7 @@ elif menu == "📄 Ficha da Criança":
                         conn.commit()
                         c.close()
                         conn.close()
+                        st.cache_data.clear()
                         st.success("Criança desarquivada com sucesso!")
                         st.rerun()
         else:
@@ -820,6 +840,7 @@ elif menu == "📝 Rotinas e Cuidados Diários (Ama)":
             conn.commit()
             c.close()
             conn.close()
+            st.cache_data.clear()
             st.success(f"Registo de rotinas de {crianca} guardado com sucesso!")
 
 # ==========================================
@@ -873,6 +894,7 @@ elif menu == "🎨 Atividades e Ocorrências":
             conn.commit()
             c.close()
             conn.close()
+            st.cache_data.clear()
             st.success(f"Atividades registadas para {crianca}.")
 
 # ==========================================
@@ -906,6 +928,7 @@ elif menu == "🕒 Secretaria e Assiduidade":
             conn.commit()
             c.close()
             conn.close()
+            st.cache_data.clear()
             st.success("Registo de presença guardado com sucesso!")
             
     st.divider()
@@ -1182,6 +1205,7 @@ elif menu == "👥 Gestão de Utilizadores":
                     conn.commit()
                     c.close()
                     conn.close()
+                    st.cache_data.clear()
                     st.success(f"Utilizador `{novo_username}` criado com sucesso para o perfil **{novo_role}** ({novo_associado})!")
                     st.rerun()
                 except Exception:
@@ -1208,6 +1232,7 @@ elif menu == "👥 Gestão de Utilizadores":
                     conn.commit()
                     c.close()
                     conn.close()
+                    st.cache_data.clear()
                     st.success(f"Palavra-passe da conta `{user_to_reset}` alterada com sucesso!")
                 else:
                     st.error("Por favor, digite a nova palavra-passe.")
@@ -1230,6 +1255,7 @@ elif menu == "👥 Gestão de Utilizadores":
                 conn.commit()
                 c.close()
                 conn.close()
+                st.cache_data.clear()
                 st.success(f"Utilizador `{user_to_delete}` eliminado com sucesso!")
                 st.rerun()
         else:
@@ -1279,6 +1305,7 @@ elif menu == "💬 Mural de Recados":
                     c.close()
                     conn.close()
                     st.success("Recado publicado com sucesso!")
+                    st.cache_data.clear()
                     st.rerun()
                 else:
                     st.error("A mensagem não pode estar vazia.")
@@ -1310,6 +1337,7 @@ elif menu == "💬 Mural de Recados":
                     c.close()
                     conn.close()
                     st.success("Mensagem privada enviada com sucesso!")
+                    st.cache_data.clear()
                     st.rerun()
                 else:
                     st.error("Escreva uma mensagem antes de enviar.")
@@ -1380,6 +1408,7 @@ elif menu == "💬 Mural de Recados":
                             conn.commit()
                             c.close()
                             conn.close()
+                            st.cache_data.clear()
                             st.success("Resposta enviada!")
                             st.rerun()
             st.markdown("---")
