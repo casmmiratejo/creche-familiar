@@ -619,40 +619,25 @@ elif menu == "📄 Ficha da Criança":
             mae_nome = m1.text_input("Nome da Mãe")
             mae_telemovel = m2.text_input("Telemóvel da Mãe")
 
-        submit_crianca = st.form_submit_button("💾 Guardar Ficha da Criança")
+            submit_crianca = st.form_submit_button("💾 Guardar Ficha da Criança")
 
-        if submit_crianca:
-            if nome_completo:
-                # Converter a fotografia para Base64 se existir
-                foto_b64 = ""
-                if foto_file is not None:
-                    foto_bytes = foto_file.read()
-                    foto_b64 = base64.b64encode(foto_bytes).decode('utf-8')
-
-                # Converter os documentos para Base64 se existirem
-                docs_saved = []
-                if docs_files:
-                    for doc in docs_files:
-                        doc_bytes = doc.read()
-                        doc_b64 = base64.b64encode(doc_bytes).decode('utf-8')
-                        docs_saved.append(f"{doc.name}:{doc_b64}")
-                docs_str = "||".join(docs_saved)
-
-                conn = get_db_connection()
-                c = conn.cursor()
-                c.execute('''INSERT INTO ficha_crianca 
-                           (processo, data_entrada, despacho, ama_responsavel, nome_completo, naturalidade, data_nascimento, sexo,
-                            num_identificacao, validade_identificacao, nif, niss, pai_nome, pai_telemovel, mae_nome, mae_telemovel, foto_path, docs_paths, arquivada)
-                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, 0)''',
-                          (processo, str(data_entrada), despacho, ama_responsavel_sel, nome_completo, naturalidade, str(data_nascimento), sexo,
-                           num_identificacao, validade_identificacao, nif, niss, pai_nome, pai_telemovel, mae_nome, mae_telemovel, foto_b64, docs_str))
-                conn.commit()
-                c.close()
-                conn.close()
-                st.success(f"Ficha de {nome_completo} guardada com sucesso!")
-                st.rerun()
-            else:
-                st.error("O Nome Completo da Criança é obrigatório.")
+            if submit_crianca:
+                if nome_completo:
+                    conn = get_db_connection()
+                    c = conn.cursor()
+                    c.execute('''INSERT INTO ficha_crianca 
+                               (processo, data_entrada, despacho, ama_responsavel, nome_completo, naturalidade, data_nascimento, sexo,
+                                num_identificacao, validade_identificacao, nif, niss, pai_nome, pai_telemovel, mae_nome, mae_telemovel, arquivada)
+                               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, 0)''',
+                              (processo, str(data_entrada), despacho, ama_responsavel_sel, nome_completo, naturalidade, str(data_nascimento), sexo,
+                               num_identificacao, validade_identificacao, nif, niss, pai_nome, pai_telemovel, mae_nome, mae_telemovel))
+                    conn.commit()
+                    c.close()
+                    conn.close()
+                    st.success(f"Ficha de {nome_completo} guardada com sucesso!")
+                    st.rerun()
+                else:
+                    st.error("O Nome Completo da Criança é obrigatório.")
     with aba_cri_2:
         st.subheader("🔍 Consultar e Gerir Fichas de Crianças")
         todas_criancas = get_criancas(incluir_arquivadas=True)
