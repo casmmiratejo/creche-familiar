@@ -356,6 +356,7 @@ if menu == "📱 Check-in QR Code (Entrada/Saída)":
             
         detalhe_acomp = f"{acompanhante_tipo} ({nome_outro_acomp})" if nome_outro_acomp else acompanhante_tipo
 
+
     with col_ck2:
         st.subheader("2. Registo da Hora")
         data_hoje_str = datetime.today().strftime("%Y-%m-%d")
@@ -364,45 +365,55 @@ if menu == "📱 Check-in QR Code (Entrada/Saída)":
         st.write(f"📅 **Data:** {datetime.today().strftime('%d/%m/%Y')}")
         st.write(f"⏰ **Hora Atual:** {hora_atual_str}")
         
-        c_btn1, c_btn2 = st.columns(2)
+        # Identificar quem está a fazer a validação na sessão
+        quem_valida = f"{st.session_state.username} ({st.session_state.role})"
         
-        if c_btn1.button("🟢 ENTRADA", type="primary", use_container_width=True):
-            conn = get_db_connection()
-            c = conn.cursor()
-            c.execute("SELECT id FROM assiduidade WHERE crianca = %s AND data = %s", (crianca_checkin, data_hoje_str))
-            registo_existente = c.fetchone()
-            nota_entrada = f"Entregue por: {detalhe_acomp}"
+        # 🔒 Restrição: Apenas Admin, Educadora ou Ama podem fazer o registo de presenças
+        if st.session_state.role in ["Administrador", "Educadora", "Ama"]:
+            c_btn1, c_btn2 = st.columns(2)
             
-            if registo_existente:
-                c.execute("UPDATE assiduidade SET hora_entrada = %s, notas = %s WHERE id = %s", 
-                          (hora_atual_str, nota_entrada, registo_existente[0]))
-            else:
-                c.execute("INSERT INTO assiduidade (data, crianca, hora_entrada, hora_saida, notas) VALUES (%s, %s, %s, '', %s)",
-                          (data_hoje_str, crianca_checkin, hora_atual_str, nota_entrada))
-            conn.commit()
-            c.close()
-            conn.close()
-            st.success(f"Entrada registada às {hora_atual_str}!")
-            
-        if c_btn2.button("🔴 SAÍDA", use_container_width=True):
-            conn = get_db_connection()
-            c = conn.cursor()
-            c.execute("SELECT id, notas FROM assiduidade WHERE crianca = %s AND data = %s", (crianca_checkin, data_hoje_str))
-            registo_existente = c.fetchone()
-            nota_saida = f"Recolhido por: {detalhe_acomp}"
-            
-            if registo_existente:
-                notas_atualizadas = f"{registo_existente[1]} | {nota_saida}" if registo_existente[1] else nota_saida
-                c.execute("UPDATE assiduidade SET hora_saida = %s, notas = %s WHERE id = %s", 
-                          (hora_atual_str, notas_atualizadas, registo_existente[0]))
-            else:
-                c.execute("INSERT INTO assiduidade (data, crianca, hora_entrada, hora_saida, notas) VALUES (%s, %s, '', %s, %s)",
-                          (data_hoje_str, crianca_checkin, hora_atual_str, nota_saida))
-            conn.commit()
-            c.close()
-            conn.close()
-            st.warning(f"Saída registada às {hora_atual_str}!")
-
+            if c_btn1.button("🟢 ENTRADA", type="primary", use_container_width=True):
+                conn = get_db_connection()
+                c = conn.cursor()
+                c.execute("SELECT id FROM assiduidade WHERE crianca = %s AND data = %s", (crianca_checkin, data_hoje_str))
+                registo_existente = c.fetchone()
+                
+                # Registo detalhado com quem entregou e quem validou no sistema
+                nota_entrada = f"Entregue por: {detalhe_acomp} | Validado por: {quem_valida}"
+                
+                if registo_existente:
+                    c.execute("UPDATE assiduidade SET hora_entrada = %s, notas = %s WHERE id = %s", 
+                              (hora_atual_str, nota_entrada, registo_existente[0]))
+                else:
+                    c.execute("INSERT INTO assiduidade (data, crianca, hora_entrada, hora_saida, notas) VALUES (%s, %s, %s, '', %s)",
+                              (data_hoje_str, crianca_checkin, hora_atual_str, nota_entrada))
+                conn.commit()
+                c.close()
+                conn.close()
+                st.success(f"Entrada de **{crianca_checkin}** registada às {hora_atual_str} (Validado por {quem_valida})!")
+                
+            if c_btn2.button("🔴 SAÍDA", use_container_width=True):
+                conn = get_db_connection()
+                c = conn.cursor()
+                c.execute("SELECT id, notas FROM assiduidade WHERE crianca = %s AND data = %s", (crianca_checkin, data_hoje_str))
+                registo_existente = c.fetchone()
+                
+                nota_saida = f"Recolhido por: {detalhe_acomp} | Validado por: {quem_valida}"
+                
+                if registo_existente:
+                    notas_atualizadas = f"{registo_existente[1]} | {nota_saida}" if registo_existente[1] else nota_saida
+                    c.execute("UPDATE assiduidade SET hora_saida = %s, notas = %s WHERE id = %s", 
+                              (hora_atual_str, notas_atualizadas, registo_existente[0]))
+                else:
+                    c.execute("INSERT INTO assiduidade (data, crianca, hora_entrada, hora_saida, notas) VALUES (%s, %s, '', %s, %s)",
+                              (data_hoje_str, crianca_checkin, hora_atual_str, nota_saida))
+                conn.commit()
+                c.close()
+                conn.close()
+                st.warning(f"Saída de **{crianca_checkin}** registada às {hora_atual_str} (Validado por {quem_valida})!")
+        else:
+            st.info("ℹ️ O registo oficial de entradas e saídas é efetuado exclusivamente pela equipa da creche.")
+    
     with col_ck3:
         st.subheader("3. QR Code de Acolhimento")
         
