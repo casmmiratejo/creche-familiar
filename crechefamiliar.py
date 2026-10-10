@@ -196,25 +196,7 @@ init_db()
 # 2. CONFIGURAÇÃO DA INTERFACE E AUTENTICAÇÃO
 # ==========================================
 st.set_page_config(page_title="Gestão Creche Familiar", page_icon="🏡", layout="wide")
-import qrcode
-from io import BytesIO
 
-# Função para gerar a imagem do QR Code em memória
-def gerar_qr_code(texto):
-    qr = qrcode.QRCode(version=1, box_size=10, border=5)
-    qr.add_data(texto)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-    
-    buffered = BytesIO()
-    img.save(buffered, format="PNG")
-    return buffered.getvalue()
-
-# Na parte visual do Check-in:
-st.subheader("📲 QR Code de Presença")
-dados_qr = "CRECHE_FAMILIAR_CHECKIN_DIARIO" # ou o ID da criança/sala
-img_bytes = gerar_qr_code(dados_qr)
-st.image(img_bytes, caption="Aponte a câmara para registar o check-in", width=250)
 
 def get_amas():
     conn = get_db_connection()
@@ -291,6 +273,24 @@ if st.sidebar.button("🚪 Terminar Sessão"):
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("📌 Navegação")
+
+# Função para gerar a imagem do QR Code em memória
+def gerar_qr_code(texto):
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(texto)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    buffered = BytesIO()
+    img.save(buffered, format="PNG")
+    return buffered.getvalue()
+
+# Na parte visual do Check-in:
+st.subheader("📲 QR Code de Presença")
+dados_qr = "CRECHE_FAMILIAR_CHECKIN_DIARIO" # ou o ID da criança/sala
+img_bytes = gerar_qr_code(dados_qr)
+st.image(img_bytes, caption="Aponte a câmara para registar o check-in", width=250)
+
 
 if st.session_state.role == "Administrador":
     menu = st.sidebar.radio("Menu (Administrador):", [
