@@ -1,13 +1,12 @@
-import qrcode
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import os
 from io import BytesIO
+import qrcode
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-import io
 import psycopg2
 
 # Criar pastas base locais para ficheiros temporários (fotos e docs)
@@ -23,12 +22,7 @@ def get_db_connection():
         db_url = st.secrets["postgres"]["url"]
     else:
         db_url = "postgresql://postgres:password@localhost:5432/postgres"
-    
-    try:
-        return psycopg2.connect(db_url)
-    except Exception as e:
-        st.error(f"❌ ERRO EXATO DO SUPABASE: {e}")
-        st.stop()
+    return psycopg2.connect(db_url)
 
 def init_db():
     conn = get_db_connection()
@@ -43,10 +37,8 @@ def init_db():
                     nome_associado TEXT
                 )''')
     
-    # Atualizar perfil antigo "Educadora / Secretaria" para "Educadora" se existir na BD
     c.execute("UPDATE utilizadores SET role = 'Educadora' WHERE role = 'Educadora / Secretaria'")
     
-    # Inserir APENAS a conta de Administrador mestre se a tabela estiver vazia
     c.execute("SELECT COUNT(*) FROM utilizadores")
     if c.fetchone()[0] == 0:
         c.execute("INSERT INTO utilizadores (username, password, role, nome_associado) VALUES (%s, %s, %s, %s) ON CONFLICT (username) DO NOTHING", 
@@ -73,7 +65,7 @@ def init_db():
                     mensagem TEXT
                 )''')
 
-    # Tabela Completa de Inscrição da Ama
+    # Tabela Completa de Inscrição da Ama (com coluna de arquivo)
     c.execute('''CREATE TABLE IF NOT EXISTS ficha_ama (
                     id SERIAL PRIMARY KEY,
                     crss TEXT,
@@ -95,10 +87,11 @@ def init_db():
                     tipo_casa TEXT,
                     num_divisoes INTEGER,
                     regime_casa TEXT,
-                    coabitantes TEXT
+                    coabitantes TEXT,
+                    arquivada INTEGER DEFAULT 0
                 )''')
 
-    # Tabela Completa de Inscrição da Criança (Com Ama Responsável)
+    # Tabela Completa de Inscrição da Criança (com coluna de arquivo)
     c.execute('''CREATE TABLE IF NOT EXISTS ficha_crianca (
                     id SERIAL PRIMARY KEY,
                     processo TEXT,
@@ -145,7 +138,8 @@ def init_db():
                     tipo_casa TEXT,
                     regime_casa TEXT,
                     foto_path TEXT,
-                    docs_paths TEXT
+                    docs_paths TEXT,
+                    arquivada INTEGER DEFAULT 0
                 )''')
 
     # Tabela de Registos Diários / Rotinas
@@ -197,10 +191,12 @@ init_db()
 # ==========================================
 st.set_page_config(page_title="Gestão Creche Familiar", page_icon="🏡", layout="wide")
 
-
-def get_amas():
+def get_amas(incluir_arquivadas=False):
     conn = get_db_connection()
-    df = pd.read_sql_query("SELECT nome_completo FROM ficha_ama", conn)
+    if incluir_arquivadas:
+        df = pd.read_sql_query("SELECT nome_completo FROM ficha_ama", conn)
+    else:
+        df = pd.read_sql_query("SELECT nome_completo FROM ficha_ama WHERE arquivada = 0", conn)
     conn.close()
     if df.empty:
         return []
@@ -208,18 +204,33 @@ def get_amas():
 
 AMAS = get_amas()
 
-def get_criancas(ama_filtro=None):
+def get_criancas(ama_filtro=None, incluir_arquivadas=False):
     conn = get_db_connection()
     if ama_filtro:
-        df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca WHERE ama_responsavel = %s", conn, params=(ama_filtro,))
+        if incluir_arquivadas:
+            df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca WHERE ama_responsavel = %s", conn, params=(ama_filtro,))
+        else:
+            df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca WHERE ama_responsavel = %s AND arquivada = 0", conn, params=(ama_filtro,))
     else:
-        df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca", conn)
+        if incluir_arquivadas:
+            df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca", conn)
+        else:
+            df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca WHERE arquivada = 0", conn)
     conn.close()
     if df.empty:
         return []
     return df["nome_completo"].tolist()
 
 CRIANCAS = get_criancas()
+
+def gerar_qr_code(texto):
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(texto)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffered = BytesIO()
+    img.save(buffered, format="PNG")
+    return buffered.getvalue()
 
 # Sistema de Sessão e Login
 if 'authenticated' not in st.session_state:
@@ -254,6 +265,7 @@ if not st.session_state.authenticated:
                 st.rerun()
             else:
                 st.error("Utilizador ou palavra-passe incorretos.")
+    
     st.info("💡 **Problemas no início de sessão? Contacte a educadora responsável**")
     st.stop()
 
@@ -274,12 +286,11 @@ if st.sidebar.button("🚪 Terminar Sessão"):
 st.sidebar.markdown("---")
 st.sidebar.subheader("📌 Navegação")
 
-
 if st.session_state.role == "Administrador":
     menu = st.sidebar.radio("Menu (Administrador):", [
         "📱 Check-in QR Code (Entrada/Saída)",
-        "👤 Ficha de Inscrição (Ama)",
-        "📄 Ficha de Inscrição (Criança)",
+        "👤 Ficha da Ama",
+        "📄 Ficha da Criança",
         "📝 Rotinas e Cuidados Diários (Ama)", 
         "🎨 Atividades e Ocorrências", 
         "🕒 Secretaria e Assiduidade",
@@ -291,8 +302,8 @@ if st.session_state.role == "Administrador":
 elif st.session_state.role == "Educadora":
     menu = st.sidebar.radio("Menu (Educadora):", [
         "📱 Check-in QR Code (Entrada/Saída)",
-        "👤 Ficha de Inscrição (Ama)",
-        "📄 Ficha de Inscrição (Criança)",
+        "👤 Ficha da Ama",
+        "📄 Ficha da Criança",
         "📝 Rotinas e Cuidados Diários (Ama)", 
         "🎨 Atividades e Ocorrências", 
         "🕒 Secretaria e Assiduidade",
@@ -321,7 +332,7 @@ else: # Pais
 if menu == "📱 Check-in QR Code (Entrada/Saída)":
     st.header("📱 Check-in Rápido de Entrada e Saída")
     st.caption("Acolhimento e entrega de crianças via leitura de QR Code ou registo rápido.")
-
+    
     if st.session_state.role == "Pais":
         crianca_checkin = st.session_state.nome_associado
         st.info(f"👦 Educando associado: **{crianca_checkin}**")
@@ -330,17 +341,17 @@ if menu == "📱 Check-in QR Code (Entrada/Saída)":
         
     st.markdown("---")
     
-    col_ck1, col_ck2 = st.columns(2)
+    col_ck1, col_ck2, col_ck3 = st.columns([1, 1, 1])
     
     with col_ck1:
-        st.subheader("1. Identificação do Acompanhante")
-        acompanhante_tipo = st.selectbox("Quem está a entregar / recolher a criança?", 
+        st.subheader("1. Identificação")
+        acompanhante_tipo = st.selectbox("Quem está a entregar / recolher?", 
                                          ["Pai", "Mãe", "Irmão / Irmã", "Avô / Avó", "Outro Familiar Autorizado"],
                                          key="acomp_tipo")
         
         nome_outro_acomp = ""
         if acompanhante_tipo == "Outro Familiar Autorizado":
-            nome_outro_acomp = st.text_input("Nome do Acompanhante Autorizado:")
+            nome_outro_acomp = st.text_input("Nome do Acompanhante:")
             
         detalhe_acomp = f"{acompanhante_tipo} ({nome_outro_acomp})" if nome_outro_acomp else acompanhante_tipo
 
@@ -354,12 +365,11 @@ if menu == "📱 Check-in QR Code (Entrada/Saída)":
         
         c_btn1, c_btn2 = st.columns(2)
         
-        if c_btn1.button("🟢 REGISTAR ENTRADA", type="primary", use_container_width=True):
+        if c_btn1.button("🟢 ENTRADA", type="primary", use_container_width=True):
             conn = get_db_connection()
             c = conn.cursor()
             c.execute("SELECT id FROM assiduidade WHERE crianca = %s AND data = %s", (crianca_checkin, data_hoje_str))
             registo_existente = c.fetchone()
-            
             nota_entrada = f"Entregue por: {detalhe_acomp}"
             
             if registo_existente:
@@ -371,14 +381,13 @@ if menu == "📱 Check-in QR Code (Entrada/Saída)":
             conn.commit()
             c.close()
             conn.close()
-            st.success(f"Entrada de **{crianca_checkin}** registada às {hora_atual_str} ({nota_entrada})!")
+            st.success(f"Entrada registada às {hora_atual_str}!")
             
-        if c_btn2.button("🔴 REGISTAR SAÍDA", use_container_width=True):
+        if c_btn2.button("🔴 SAÍDA", use_container_width=True):
             conn = get_db_connection()
             c = conn.cursor()
             c.execute("SELECT id, notas FROM assiduidade WHERE crianca = %s AND data = %s", (crianca_checkin, data_hoje_str))
             registo_existente = c.fetchone()
-            
             nota_saida = f"Recolhido por: {detalhe_acomp}"
             
             if registo_existente:
@@ -391,259 +400,237 @@ if menu == "📱 Check-in QR Code (Entrada/Saída)":
             conn.commit()
             c.close()
             conn.close()
-            st.warning(f"Saída de **{crianca_checkin}** registada às {hora_atual_str} ({nota_saida})!")
+            st.warning(f"Saída registada às {hora_atual_str}!")
+
+    with col_ck3:
+        st.subheader("3. QR Code de Acolhimento")
+        texto_qr = f"CRECHE_FAMILIAR_CHECKIN_{crianca_checkin}_{datetime.today().strftime('%Y%m%d')}"
+        img_qr_bytes = gerar_qr_code(texto_qr)
+        st.image(img_qr_bytes, caption=f"QR Code: {crianca_checkin}", width=160)
 
 # ==========================================
-# 5. MÓDULO: FICHA DE INSCRIÇÃO DA AMA
+# 5. MÓDULO: FICHA DA AMA (COM CONSULTA E ARQUIVAMENTO)
 # ==========================================
-elif menu == "👤 Ficha de Inscrição (Ama)":
-    st.header("👤 Ficha de Inscrição e Enquadramento da Ama")
+elif menu == "👤 Ficha da Ama":
+    st.header("👤 Ficha da Ama (Inscrição, Consulta e Arquivamento)")
     st.caption("Centro Regional de Segurança Social (C.R.S.S.) e Decreto-Lei n.º 158/84 de 17 de Maio.")
     
-    with st.form("form_inscricao_ama_completa"):
-        st.subheader("1. Enquadramento Institucional")
-        c_i1, c_i2 = st.columns(2)
-        crss = c_i1.text_input("C.R.S.S. de Enquadramento")
-        decreto = c_i2.text_input("Enquadramento Legal", value="Decreto Lei n.º 158/84 de 17 de Maio")
-        
-        st.subheader("2. Dados Pessoais da Ama")
-        a1, a2, a3, a4 = st.columns(4)
-        nome_completo = a1.text_input("Nome Completo da Ama")
-        naturalidade = a2.text_input("Naturalidade")
-        data_nascimento = a3.date_input("Data de Nascimento", datetime(1985, 1, 1))
-        estado_civil = a4.selectbox("Estado Civil", ["Solteiro(a)", "Casado(a)", "Divorciado(a)", "Viúvo(a)", "União de Facto"])
-        
-        a5, a6, a7 = st.columns(3)
-        morada = a5.text_input("Morada Completa")
-        contactos = a6.text_input("Contactos Telefónicos / Telemóvel")
-        sabe_ler_escrever = a7.selectbox("Sabe ler e escrever?", ["Sim", "Não"])
-        
-        st.subheader("3. Habilitações e Qualificações")
-        habilitacoes_literarias = st.text_input("Habilitações Literárias")
-        habilitacoes_profissionais = st.text_area("Habilitações Profissionais")
-        habilitacoes_complementares = st.text_area("Habilitações Complementares / Formação Específica")
-        
-        st.subheader("4. Experiência Anterior e Situação Profissional")
-        experiencia_anterior = st.text_area("Já cuidou de crianças? Indique o tipo de trabalho realizado, onde e em que período:")
-        
-        a8, a9 = st.columns(2)
-        desempregada = a8.selectbox("Está presentemente desempregada?", ["Não", "Sim"])
-        motivo_desemprego = a9.text_input("Qual o motivo? (se aplicável)")
-        
-        motivacao_atividade = st.text_area("Quais os motivos que a levam a exercer a atividade de ama?")
-        
-        st.subheader("5. Condições da Habitação")
-        h1, h2, h3 = st.columns(3)
-        tipo_casa = h1.selectbox("Tipo de Casa", ["Vivenda", "Andar", "Outro"])
-        num_divisoes = h2.number_input("N.º de Divisões (sem contar com WC e cozinha)", min_value=1, max_value=20, value=3)
-        regime_casa = h3.selectbox("Regime de Habitação", ["Própria", "Alugada"])
-        
-        st.subheader("6. Pessoas que Coabitam com a Ama")
-        coabitantes_linhas = []
-        for i in range(1, 6):
-            st.markdown(f"**Coabitante {i}**")
-            co1, co2, co3, co4, co5, co6 = st.columns(6)
-            c_nome = co1.text_input(f"Nome {i}", key=f"co_nome_{i}")
-            c_idade = co2.text_input(f"Idade {i}", key=f"co_idade_{i}")
-            c_parent = co3.text_input(f"Parentesco {i}", key=f"co_parent_{i}")
-            c_prof = co4.text_input(f"Profissão {i}", key=f"co_prof_{i}")
-            c_ecivil = co5.text_input(f"Estado Civil {i}", key=f"co_ecivil_{i}")
-            c_cc = co6.text_input(f"N.º Cartão Cidadão {i}", key=f"co_cc_{i}")
+    aba_ama_1, aba_ama_2 = st.tabs(["✨ Nova Inscrição", "🔍 Consultar e Arquivar"])
+    
+    with aba_ama_1:
+        with st.form("form_inscricao_ama_completa"):
+            st.subheader("1. Enquadramento Institucional")
+            c_i1, c_i2 = st.columns(2)
+            crss = c_i1.text_input("C.R.S.S. de Enquadramento")
+            decreto = c_i2.text_input("Enquadramento Legal", value="Decreto Lei n.º 158/84 de 17 de Maio")
             
-            if c_nome:
-                coabitantes_linhas.append(f"{c_nome} ({c_idade} anos, {c_parent}) - Prof: {c_prof}, E.Civil: {c_ecivil}, CC: {c_cc}")
+            st.subheader("2. Dados Pessoais da Ama")
+            a1, a2, a3, a4 = st.columns(4)
+            nome_completo = a1.text_input("Nome Completo da Ama")
+            naturalidade = a2.text_input("Naturalidade")
+            data_nascimento = a3.date_input("Data de Nascimento", datetime(1985, 1, 1))
+            estado_civil = a4.selectbox("Estado Civil", ["Solteiro(a)", "Casado(a)", "Divorciado(a)", "Viúvo(a)", "União de Facto"])
+            
+            a5, a6, a7 = st.columns(3)
+            morada = a5.text_input("Morada Completa")
+            contactos = a6.text_input("Contactos Telefónicos / Telemóvel")
+            sabe_ler_escrever = a7.selectbox("Sabe ler e escrever?", ["Sim", "Não"])
+            
+            st.subheader("3. Habilitações e Qualificações")
+            habilitacoes_literarias = st.text_input("Habilitações Literárias")
+            habilitacoes_profissionais = st.text_area("Habilitações Profissionais")
+            habilitacoes_complementares = st.text_area("Habilitações Complementares / Formação Específica")
+            
+            st.subheader("4. Experiência Anterior e Situação Profissional")
+            experiencia_anterior = st.text_area("Experiência anterior com crianças:")
+            
+            a8, a9 = st.columns(2)
+            desempregada = a8.selectbox("Está presentemente desempregada?", ["Não", "Sim"])
+            motivo_desemprego = a9.text_input("Qual o motivo? (se aplicável)")
+            
+            motivacao_atividade = st.text_area("Motivos para exercer a atividade de ama:")
+            
+            st.subheader("5. Condições da Habitação")
+            h1, h2, h3 = st.columns(3)
+            tipo_casa = h1.selectbox("Tipo de Casa", ["Vivenda", "Andar", "Outro"])
+            num_divisoes = h2.number_input("N.º de Divisões", min_value=1, max_value=20, value=3)
+            regime_casa = h3.selectbox("Regime de Habitação", ["Própria", "Alugada"])
+            
+            st.subheader("6. Coabitantes")
+            coabitantes_linhas = []
+            for i in range(1, 4):
+                co1, co2, co3, co4 = st.columns(4)
+                c_nome = co1.text_input(f"Nome {i}", key=f"co_nome_{i}")
+                c_parent = co2.text_input(f"Parentesco {i}", key=f"co_parent_{i}")
+                c_prof = co3.text_input(f"Profissão {i}", key=f"co_prof_{i}")
+                c_cc = co4.text_input(f"CC {i}", key=f"co_cc_{i}")
+                if c_nome:
+                    coabitantes_linhas.append(f"{c_nome} ({c_parent}) - Prof: {c_prof}")
 
-        submit_ama = st.form_submit_button("💾 Guardar Inscrição da Ama")
-        
-        if submit_ama:
-            if nome_completo:
-                coabitantes_str = " | ".join(coabitantes_linhas)
-                conn = get_db_connection()
-                c = conn.cursor()
-                c.execute('''INSERT INTO ficha_ama 
-                             (crss, decreto, nome_completo, naturalidade, data_nascimento, estado_civil, morada, 
-                              contactos, sabe_ler_escrever, habilitacoes_literarias, habilitacoes_profissionais, 
-                              habilitacoes_complementares, experiencia_anterior, desempregada, motivo_desemprego, 
-                              motivacao_atividade, tipo_casa, num_divisoes, regime_casa, coabitantes)
-                             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
-                          (crss, decreto, nome_completo, naturalidade, str(data_nascimento), estado_civil, morada,
-                           contactos, sabe_ler_escrever, habilitacoes_literarias, habilitacoes_profissionais,
-                           habilitacoes_complementares, experiencia_anterior, desempregada, motivo_desemprego,
-                           motivacao_atividade, tipo_casa, num_divisoes, regime_casa, coabitantes_str))
-                conn.commit()
-                c.close()
-                conn.close()
-                st.success(f"Inscrição da ama {nome_completo} guardada com sucesso!")
-                st.rerun()
-            else:
-                st.error("O campo Nome Completo da Ama é obrigatório.")
+            submit_ama = st.form_submit_button("💾 Guardar Ficha da Ama")
+            
+            if submit_ama:
+                if nome_completo:
+                    coabitantes_str = " | ".join(coabitantes_linhas)
+                    conn = get_db_connection()
+                    c = conn.cursor()
+                    c.execute('''INSERT INTO ficha_ama 
+                               (crss, decreto, nome_completo, naturalidade, data_nascimento, estado_civil, morada, 
+                                contactos, sabe_ler_escrever, habilitacoes_literarias, habilitacoes_profissionais, 
+                                habilitacoes_complementares, experiencia_anterior, desempregada, motivo_desemprego, 
+                                motivacao_atividade, tipo_casa, num_divisoes, regime_casa, coabitantes, arquivada)
+                               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, 0)''',
+                              (crss, decreto, nome_completo, naturalidade, str(data_nascimento), estado_civil, morada,
+                               contactos, sabe_ler_escrever, habilitacoes_literarias, habilitacoes_profissionais,
+                               habilitacoes_complementares, experiencia_anterior, desempregada, motivo_desemprego,
+                               motivacao_atividade, tipo_casa, num_divisoes, regime_casa, coabitantes_str))
+                    conn.commit()
+                    c.close()
+                    conn.close()
+                    st.success(f"Ficha da ama {nome_completo} guardada com sucesso!")
+                    st.rerun()
+                else:
+                    st.error("O Nome Completo da Ama é obrigatório.")
+
+    with aba_ama_2:
+        st.subheader("🔍 Consultar / Geritar Fichas de Amas")
+        todas_amas = get_amas(incluir_arquivadas=True)
+        if todas_amas:
+            ama_selecionada = st.selectbox("Selecione a Ama para consultar:", todas_amas, key="sel_cons_ama")
+            conn = get_db_connection()
+            df_detalhe_ama = pd.read_sql_query("SELECT * FROM ficha_ama WHERE nome_completo = %s", conn, params=(ama_selecionada,))
+            conn.close()
+            
+            if not df_detalhe_ama.empty:
+                reg_ama = df_detalhe_ama.iloc[0]
+                status_arq = "🔴 Arquivada" if reg_ama['arquivada'] == 1 else "🟢 Ativa"
+                st.markdown(f"**Estado Atual:** {status_arq}")
+                st.write(dict(reg_ama))
                 
-    st.divider()
-    st.subheader("Amas Registadas no Sistema")
-    conn = get_db_connection()
-    df_amas_reg = pd.read_sql_query("SELECT id, crss, nome_completo, morada, contactos FROM ficha_ama", conn)
-    conn.close()
-    st.dataframe(df_amas_reg, use_container_width=True)
+                col_arq1, col_arq2 = st.columns(2)
+                if reg_ama['arquivada'] == 0:
+                    if col_arq1.button("📁 Arquivar Ama"):
+                        conn = get_db_connection()
+                        c = conn.cursor()
+                        c.execute("UPDATE ficha_ama SET arquivada = 1 WHERE id = %s", (int(reg_ama['id']),))
+                        conn.commit()
+                        c.close()
+                        conn.close()
+                        st.success("Ama arquivada com sucesso!")
+                        st.rerun()
+                else:
+                    if col_arq2.button("📂 Desarquivar Ama"):
+                        conn = get_db_connection()
+                        c = conn.cursor()
+                        c.execute("UPDATE ficha_ama SET arquivada = 0 WHERE id = %s", (int(reg_ama['id']),))
+                        conn.commit()
+                        c.close()
+                        conn.close()
+                        st.success("Ama desarquivada com sucesso!")
+                        st.rerun()
+        else:
+            st.info("Ainda não existem amas registadas.")
 
 # ==========================================
-# 6. MÓDULO: FICHA DE INSCRIÇÃO DA CRIANÇA
+# 6. MÓDULO: FICHA DA CRIANÇA (COM CONSULTA E ARQUIVAMENTO)
 # ==========================================
-elif menu == "📄 Ficha de Inscrição (Criança)":
-    st.header("📄 Ficha de Registo e Inscrição da Criança")
+elif menu == "📄 Ficha da Criança":
+    st.header("📄 Ficha da Criança (Inscrição, Consulta e Arquivamento)")
     st.caption("Decreto-Lei n.º 115/2015, de 22 de junho")
     
-    with st.form("form_inscricao_crianca"):
-        st.subheader("1. Atribuição de Ama Responsável")
-        ama_responsavel_sel = st.selectbox("Ama Responsável (Acolhimento Familiar)", AMAS)
-        
-        st.subheader("2. Dados Administrativos")
-        col_adm1, col_adm2, col_adm3 = st.columns(3)
-        processo = col_adm1.text_input("N.º de Processo")
-        data_entrada = col_adm2.date_input("Data de Entrada", datetime.today())
-        despacho = col_adm3.selectbox("Despacho / Estado", ["Pendente", "Aprovado", "Arquivado"])
-        
-        st.subheader("3. Identificação da Criança")
-        c1, c2, c3, c4 = st.columns(4)
-        nome_completo = c1.text_input("Nome Completo")
-        naturalidade = c2.text_input("Naturalidade")
-        data_nascimento = c3.date_input("Data de Nascimento", datetime(2023, 1, 1))
-        sexo = c4.selectbox("Sexo", ["Masculino", "Feminino", "Outro"])
-        
-        c5, c6, c7, c8 = st.columns(4)
-        num_identificacao = c5.text_input("N.º de Identificação (CC / BI)")
-        validade_identificacao = c6.text_input("Validade Identificação")
-        nif = c7.text_input("NIF (Criança)")
-        niss = c8.text_input("NISS (Segurança Social)")
-        num_utente_sns = st.text_input("N.º Utente SNS (Saúde)")
-        
-        st.subheader("4. Identificação do Pai")
-        p1, p2, p3 = st.columns(3)
-        pai_nome = p1.text_input("Nome Completo do Pai")
-        pai_morada = p2.text_input("Morada (Pai)")
-        pai_profissao = p3.text_input("Profissão (Pai)")
-        
-        p4, p5, p6 = st.columns(3)
-        pai_telefone = p4.text_input("Telefone (Pai)")
-        pai_telemovel = p5.text_input("Telemóvel (Pai)")
-        pai_email = p6.text_input("E-mail (Pai)")
-        
-        p7, p8, p9 = st.columns(3)
-        pai_nif = p7.text_input("NIF (Pai)")
-        pai_local_trabalho = p8.text_input("Local de Trabalho (Pai)")
-        pai_morada_trabalho = p9.text_input("Morada Local de Trabalho (Pai)")
-        
-        p10, p11 = st.columns(2)
-        pai_telefone_trabalho = p10.text_input("Telefone Local de Trabalho (Pai)")
-        pai_horario = p11.text_input("Horário de Trabalho (Pai)")
-
-        st.subheader("5. Identificação da Mãe")
-        m1, m2, m3 = st.columns(3)
-        mae_nome = m1.text_input("Nome Completo da Mãe")
-        mae_morada = m2.text_input("Morada (Mãe)")
-        mae_profissao = m3.text_input("Profissão (Mãe)")
-        
-        m4, m5, m6 = st.columns(3)
-        mae_telefone = m4.text_input("Telefone (Mãe)")
-        mae_telemovel = m5.text_input("Telemóvel (Mãe)")
-        mae_email = m6.text_input("E-mail (Mãe)")
-        
-        m7, m8, m9 = st.columns(3)
-        mae_nif = m7.text_input("NIF (Mãe)")
-        mae_local_trabalho = m8.text_input("Local de Trabalho (Mãe)")
-        mae_morada_trabalho = m9.text_input("Morada Local de Trabalho (Mãe)")
-        
-        m10, m11 = st.columns(2)
-        mae_telefone_trabalho = m10.text_input("Telefone Local de Trabalho (Mãe)")
-        mae_horario = m11.text_input("Horário de Trabalho (Mãe)")
-
-        st.subheader("6. A Cargo de / Responsável")
-        r1, r2, r3 = st.columns(3)
-        a_cargo_de = r1.selectbox("A cargo de quem está a criança?", ["Pais", "Pai", "Mãe", "Outra pessoa"])
-        responsavel_outro_nome = r2.text_input("Nome (se outra pessoa)")
-        responsavel_parentesco = r3.text_input("Parentesco com a criança")
-        
-        responsavel_motivo = st.text_area("Motivo (se não estiver a cargo de ambos os pais)")
-        
-        st.subheader("7. Elementos do Agregado Familiar e Rendimentos")
-        agregado_linhas = []
-        for i in range(1, 5):
-            st.markdown(f"**Familiar {i}**")
-            f_col1, f_col2, f_col3, f_col4, f_col5, f_col6 = st.columns(6)
-            fnome = f_col1.text_input(f"Nome {i}", key=f"f_nome_{i}")
-            fidade = f_col2.text_input(f"Idade {i}", key=f"f_idade_{i}")
-            fparent = f_col3.text_input(f"Parentesco {i}", key=f"f_parent_{i}")
-            fprof = f_col4.text_input(f"Profissão {i}", key=f"f_prof_{i}")
-            fhorario = f_col5.text_input(f"Horário {i}", key=f"f_horario_{i}")
-            frem = f_col6.number_input(f"Remuneração (€) {i}", min_value=0.0, step=50.0, key=f"f_rem_{i}")
+    aba_cri_1, aba_cri_2 = st.tabs(["✨ Nova Inscrição", "🔍 Consultar e Arquivar"])
+    
+    with aba_cri_1:
+        with st.form("form_inscricao_crianca"):
+            st.subheader("1. Atribuição de Ama Responsável")
+            ama_responsavel_sel = st.selectbox("Ama Responsável", AMAS) if AMAS else st.text_input("Ama Responsável (Escreva o nome)")
             
-            if fnome:
-                agregado_linhas.append(f"{fnome} ({fidade} anos, {fparent}) - Prof: {fprof}, Rendimento: {frem}€")
+            st.subheader("2. Dados Administrativos")
+            col_adm1, col_adm2, col_adm3 = st.columns(3)
+            processo = col_adm1.text_input("N.º de Processo")
+            data_entrada = col_adm2.date_input("Data de Entrada", datetime.today())
+            despacho = col_adm3.selectbox("Despacho", ["Pendente", "Aprovado", "Arquivado"])
+            
+            st.subheader("3. Identificação da Criança")
+            c1, c2, c3, c4 = st.columns(4)
+            nome_completo = c1.text_input("Nome Completo")
+            naturalidade = c2.text_input("Naturalidade")
+            data_nascimento = c3.date_input("Data de Nascimento", datetime(2023, 1, 1))
+            sexo = c4.selectbox("Sexo", ["Masculino", "Feminino", "Outro"])
+            
+            c5, c6, c7, c8 = st.columns(4)
+            num_identificacao = c5.text_input("N.º de Identificação (CC)")
+            validade_identificacao = c6.text_input("Validade CC")
+            nif = c7.text_input("NIF")
+            niss = c8.text_input("NISS")
+            
+            st.subheader("4. Filiação")
+            p1, p2 = st.columns(2)
+            pai_nome = p1.text_input("Nome do Pai")
+            pai_telemovel = p2.text_input("Telemóvel do Pai")
+            
+            m1, m2 = st.columns(2)
+            mae_nome = m1.text_input("Nome da Mãe")
+            mae_telemovel = m2.text_input("Telemóvel da Mãe")
 
-        st.subheader("8. Condições de Habitação")
-        h1, h2 = st.columns(2)
-        tipo_casa = h1.selectbox("Tipo de Habitação", ["Vivenda", "Andar", "Quarto", "Barraca", "Outro"], key="hab_c_tipo")
-        regime_casa = h2.selectbox("Regime de Ocupação", ["Próprio", "Alugado", "Outro"], key="hab_c_regime")
+            submit_crianca = st.form_submit_button("💾 Guardar Ficha da Criança")
 
-        st.subheader("9. Fotografia e Documentação Anexa")
-        foto_file = st.file_uploader("Fotografia da Criança", type=['png', 'jpg', 'jpeg'])
-        docs_files = st.file_uploader("Anexar Documentos", type=['pdf', 'png', 'jpg', 'jpeg', 'doc', 'docx'], accept_multiple_files=True)
+            if submit_crianca:
+                if nome_completo:
+                    conn = get_db_connection()
+                    c = conn.cursor()
+                    c.execute('''INSERT INTO ficha_crianca 
+                               (processo, data_entrada, despacho, ama_responsavel, nome_completo, naturalidade, data_nascimento, sexo,
+                                num_identificacao, validade_identificacao, nif, niss, pai_nome, pai_telemovel, mae_nome, mae_telemovel, arquivada)
+                               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, 0)''',
+                              (processo, str(data_entrada), despacho, ama_responsavel_sel, nome_completo, naturalidade, str(data_nascimento), sexo,
+                               num_identificacao, validade_identificacao, nif, niss, pai_nome, pai_telemovel, mae_nome, mae_telemovel))
+                    conn.commit()
+                    c.close()
+                    conn.close()
+                    st.success(f"Ficha de {nome_completo} guardada com sucesso!")
+                    st.rerun()
+                else:
+                    st.error("O Nome Completo da Criança é obrigatório.")
 
-        submit_crianca = st.form_submit_button("💾 Guardar Ficha Completa da Criança")
-
-        if submit_crianca:
-            if nome_completo:
-                total_rend = sum([st.session_state.get(f"f_rem_{i}", 0.0) for i in range(1, 5)])
-                agregado_str = " | ".join(agregado_linhas)
+    with aba_cri_2:
+        st.subheader("🔍 Consultar / Geritar Fichas de Crianças")
+        todas_criancas = get_criancas(incluir_arquivadas=True)
+        if todas_criancas:
+            crianca_selecionada = st.selectbox("Selecione a Criança para consultar:", todas_criancas, key="sel_cons_cri")
+            conn = get_db_connection()
+            df_detalhe_cri = pd.read_sql_query("SELECT * FROM ficha_crianca WHERE nome_completo = %s", conn, params=(crianca_selecionada,))
+            conn.close()
+            
+            if not df_detalhe_cri.empty:
+                reg_cri = df_detalhe_cri.iloc[0]
+                status_arq_c = "🔴 Arquivada" if reg_cri['arquivada'] == 1 else "🟢 Ativa"
+                st.markdown(f"**Estado Atual:** {status_arq_c}")
+                st.write(dict(reg_cri))
                 
-                foto_path = ""
-                if foto_file is not None:
-                    foto_path = os.path.join("uploads", f"{nome_completo.replace(' ', '_')}_foto_{foto_file.name}")
-                    with open(foto_path, "wb") as f:
-                        f.write(foto_file.getbuffer())
-                
-                docs_saved = []
-                if docs_files:
-                    for doc in docs_files:
-                        doc_path = os.path.join("uploads", f"{nome_completo.replace(' ', '_')}_{doc.name}")
-                        with open(doc_path, "wb") as f:
-                            f.write(doc.getbuffer())
-                        docs_saved.append(doc.name)
-                docs_str = ", ".join(docs_saved)
-
-                conn = get_db_connection()
-                c = conn.cursor()
-                c.execute('''INSERT INTO ficha_crianca 
-                             (processo, data_entrada, despacho, ama_responsavel, nome_completo, naturalidade, data_nascimento, sexo,
-                              num_identificacao, validade_identificacao, nif, niss, num_utente_sns,
-                              pai_nome, pai_morada, pai_telefone, pai_telemovel, pai_email, pai_profissao, pai_nif,
-                              pai_local_trabalho, pai_morada_trabalho, pai_telefone_trabalho, pai_horario,
-                              mae_nome, mae_morada, mae_telefone, mae_telemovel, mae_email, mae_profissao, mae_nif,
-                              mae_local_trabalho, mae_morada_trabalho, mae_telefone_trabalho, mae_horario,
-                              a_cargo_de, responsavel_outro_nome, responsavel_motivo, responsavel_parentesco,
-                              agregado_familiar, total_rendimentos, tipo_casa, regime_casa, foto_path, docs_paths)
-                             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
-                          (processo, str(data_entrada), despacho, ama_responsavel_sel, nome_completo, naturalidade, str(data_nascimento), sexo,
-                           num_identificacao, validade_identificacao, nif, niss, num_utente_sns,
-                           pai_nome, pai_morada, pai_telefone, pai_telemovel, pai_email, pai_profissao, pai_nif,
-                           pai_local_trabalho, pai_morada_trabalho, pai_telefone_trabalho, pai_horario,
-                           mae_nome, mae_morada, mae_telefone, mae_telemovel, mae_email, mae_profissao, mae_nif,
-                           mae_local_trabalho, mae_morada_trabalho, mae_telefone_trabalho, mae_horario,
-                           a_cargo_de, responsavel_outro_nome, responsavel_motivo, responsavel_parentesco,
-                           agregado_str, total_rend, tipo_casa, regime_casa, foto_path, docs_str))
-                conn.commit()
-                c.close()
-                conn.close()
-                st.success(f"Inscrição detalhada de {nome_completo} guardada com sucesso! Atribuída à Ama: {ama_responsavel_sel}")
-                st.rerun()
-            else:
-                st.error("O campo Nome Completo da Criança é obrigatório.")
-
-    st.divider()
-    st.subheader("Crianças Inscritas no Sistema")
-    conn = get_db_connection()
-    df_inscritos = pd.read_sql_query("SELECT id, processo, ama_responsavel, nome_completo FROM ficha_crianca", conn)
-    conn.close()
-    st.dataframe(df_inscritos, use_container_width=True)
+                col_arq_c1, col_arq_c2 = st.columns(2)
+                if reg_cri['arquivada'] == 0:
+                    if col_arq_c1.button("📁 Arquivar Criança"):
+                        conn = get_db_connection()
+                        c = conn.cursor()
+                        c.execute("UPDATE ficha_crianca SET arquivada = 1 WHERE id = %s", (int(reg_cri['id']),))
+                        conn.commit()
+                        c.close()
+                        conn.close()
+                        st.success("Criança arquivada com sucesso!")
+                        st.rerun()
+                else:
+                    if col_arq_c2.button("📂 Desarquivar Criança"):
+                        conn = get_db_connection()
+                        c = conn.cursor()
+                        c.execute("UPDATE ficha_crianca SET arquivada = 0 WHERE id = %s", (int(reg_cri['id']),))
+                        conn.commit()
+                        c.close()
+                        conn.close()
+                        st.success("Criança desarquivada com sucesso!")
+                        st.rerun()
+        else:
+            st.info("Ainda não existem crianças registadas.")
 
 # ==========================================
 # 7. MÓDULO: ROTINAS E CUIDADOS DIÁRIOS (AMA)
@@ -657,7 +644,7 @@ elif menu == "📝 Rotinas e Cuidados Diários (Ama)":
     with st.form("form_cuidados"):
         col1, col2, col3 = st.columns(3)
         data_registo = col1.date_input("Data do Registo", datetime.today())
-        crianca = col2.selectbox("Criança", criancas_disponiveis)
+        crianca = col2.selectbox("Criança", criancas_disponiveis if criancas_disponiveis else CRIANCAS)
         ama = col3.selectbox("Ama Responsável", AMAS, index=AMAS.index(ama_atual) if ama_atual in AMAS else 0)
         
         st.subheader("1. Bem-Estar")
@@ -708,7 +695,7 @@ elif menu == "🎨 Atividades e Ocorrências":
     with st.form("form_atividades"):
         col1, col2 = st.columns(2)
         data_registo = col1.date_input("Data", datetime.today())
-        crianca = col2.selectbox("Criança", criancas_disponiveis)
+        crianca = col2.selectbox("Criança", criancas_disponiveis if criancas_disponiveis else CRIANCAS)
         
         st.subheader("🧩 Atividades Sociopedagógicas")
         atividades = st.text_area("Descrição das brincadeiras")
@@ -750,7 +737,7 @@ elif menu == "🎨 Atividades e Ocorrências":
             st.success(f"Atividades registadas para {crianca}.")
 
 # ==========================================
-# 9. MÓDULO: SECRETARIA E ASSIDUIDADE
+# 9. MÓDULO: SECRETARIA E ASSIDUIDADE (EXCEL BONITO)
 # ==========================================
 elif menu == "🕒 Secretaria e Assiduidade":
     st.header("🕒 Controlo de Frequência e Presenças")
@@ -761,7 +748,7 @@ elif menu == "🕒 Secretaria e Assiduidade":
     with st.form("form_assiduidade"):
         col1, col2 = st.columns(2)
         data_registo = col1.date_input("Data", datetime.today())
-        crianca = col2.selectbox("Criança", criancas_disponiveis)
+        crianca = col2.selectbox("Criança", criancas_disponiveis if criancas_disponiveis else CRIANCAS)
         
         col3, col4 = st.columns(2)
         hora_entrada = col3.time_input("Hora de Entrada")
@@ -776,7 +763,7 @@ elif menu == "🕒 Secretaria e Assiduidade":
             c = conn.cursor()
             c.execute('''INSERT INTO assiduidade (data, crianca, hora_entrada, hora_saida, notas)
                          VALUES (%s, %s, %s, %s, %s)''',
-                      (str(data_registo), crianca, str(hora_entrada), str(hora_saida), notas_assiduidade))
+                      (str(data_registo), crianca, str(hora_entrada), str(hora_saida) if hora_saida else "", notas_assiduidade))
             conn.commit()
             c.close()
             conn.close()
@@ -786,8 +773,8 @@ elif menu == "🕒 Secretaria e Assiduidade":
     st.subheader("📥 Exportar Mapa de Presenças Mensal em Excel (.xlsx)")
     
     col_ex1, col_ex2, col_ex3 = st.columns(3)
-    crianca_excel = col_ex1.selectbox("Criança para o Mapa", criancas_disponiveis, key="excel_crianca")
-    ama_excel = col_ex2.selectbox("Ama Responsável", AMAS)
+    crianca_excel = col_ex1.selectbox("Criança para o Mapa", criancas_disponiveis if criancas_disponiveis else CRIANCAS, key="excel_crianca")
+    ama_excel = col_ex2.selectbox("Ama Responsável", AMAS if AMAS else ["Geral"])
     
     meses_dict = {
         "Janeiro": "01", "Fevereiro": "02", "Março": "03", "Abril": "04",
@@ -812,21 +799,33 @@ elif menu == "🕒 Secretaria e Assiduidade":
         else:
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                header_data = [
-                    ["MAPA DE REGISTO DE PRESENÇAS E ASSIDUIDADE"],
-                    [f"Nome da Criança: {crianca_excel}"],
-                    [f"Nome da Ama: {ama_excel}"],
-                    [f"Período: {mes_nome} de {ano_sel}"],
-                    [f"Data de Emissão: {datetime.today().strftime('%d/%m/%Y')}"],
-                    []
-                ]
-                df_header = pd.DataFrame(header_data)
-                df_header.to_excel(writer, sheet_name='Presenças', index=False, header=False)
-                df_assiduidade.to_excel(writer, sheet_name='Presenças', index=False, startrow=6, startcol=0)
+                df_assiduidade.to_excel(writer, index=False, sheet_name='Presenças')
                 
+                # Formatação bonita com openpyxl (cabeçalho azul, texto branco, larguras ajustadas)
+                workbook = writer.book
+                worksheet = writer.sheets['Presenças']
+                
+                from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+                
+                header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+                header_font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
+                align_center = Alignment(horizontal="center", vertical="center")
+                
+                for col_num in range(1, len(df_assiduidade.columns) + 1):
+                    cell = worksheet.cell(row=1, column=col_num)
+                    cell.fill = header_fill
+                    cell.font = header_font
+                    cell.alignment = align_center
+                
+                # Ajuste automático das colunas
+                for col in worksheet.columns:
+                    max_len = max(len(str(cell.value or '')) for cell in col)
+                    col_letter = col[0].column_letter
+                    worksheet.column_dimensions[col_letter].width = max(max_len + 4, 15)
+
             excel_data = output.getvalue()
             st.download_button(
-                label=f"📥 Descarregar Mapa ({mes_nome} {ano_sel}) (.xlsx)",
+                label=f"📥 Descarregar Mapa Formatado ({mes_nome} {ano_sel}) (.xlsx)",
                 data=excel_data,
                 file_name=f"Mapa_Presencas_{crianca_excel.replace(' ', '_')}_{ano_sel}_{mes_num}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1105,7 +1104,7 @@ elif menu == "👥 Gestão de Utilizadores":
     st.dataframe(df_users, use_container_width=True)
 
 # ==========================================
-# 14. MÓDULO: MURAL DE RECADOS E COMUNICAÇÃO
+# 14. MÓDULO: MURAL DE RECADOS E COMUNICAÇÃO (SEM DUPLICADOS)
 # ==========================================
 elif menu == "💬 Mural de Recados":
     st.header("💬 Mural de Recados e Comunicação")
@@ -1181,22 +1180,20 @@ elif menu == "💬 Mural de Recados":
     
     conn = get_db_connection()
     if perfil_atual in ["Administrador", "Educadora"]:
-        df_recados = pd.read_sql_query("SELECT * FROM recados ORDER BY id DESC", conn)
+        df_recados = pd.read_sql_query("SELECT DISTINCT * FROM recados ORDER BY id DESC", conn)
     elif perfil_atual == "Ama":
         criancas_dela = get_criancas(associado_atual)
         if criancas_dela:
-            format_in = tuple(criancas_dela)
-            # Para consulta segura em lista no postgresql com IN (%s) usamos placeholders múltiplos ou tuple unpacking via psycopg2
-            query = "SELECT * FROM recados WHERE privado = 0 AND (tipo_destino = 'Geral (Todos)' OR (tipo_destino = 'Grupo de Ama Específica' AND alvo_destino = %s) OR (tipo_destino = 'Individual (Criança / Pais)' AND alvo_destino = ANY(%s))) OR (privado = 1 AND alvo_destino = %s) ORDER BY id DESC"
+            query = "SELECT DISTINCT * FROM recados WHERE privado = 0 AND (tipo_destino = 'Geral (Todos)' OR (tipo_destino = 'Grupo de Ama Específica' AND alvo_destino = %s) OR (tipo_destino = 'Individual (Criança / Pais)' AND alvo_destino = ANY(%s))) OR (privado = 1 AND alvo_destino = %s) ORDER BY id DESC"
             df_recados = pd.read_sql_query(query, conn, params=(associado_atual, list(criancas_dela), associado_atual))
         else:
-            query = "SELECT * FROM recados WHERE privado = 0 AND (tipo_destino = 'Geral (Todos)' OR (tipo_destino = 'Grupo de Ama Específica' AND alvo_destino = %s)) OR (privado = 1 AND alvo_destino = %s) ORDER BY id DESC"
+            query = "SELECT DISTINCT * FROM recados WHERE privado = 0 AND (tipo_destino = 'Geral (Todos)' OR (tipo_destino = 'Grupo de Ama Específica' AND alvo_destino = %s)) OR (privado = 1 AND alvo_destino = %s) ORDER BY id DESC"
             df_recados = pd.read_sql_query(query, conn, params=(associado_atual, associado_atual))
     else: # Pais
         df_ama_filho = pd.read_sql_query("SELECT ama_responsavel FROM ficha_crianca WHERE nome_completo = %s", conn, params=(associado_atual,))
         ama_do_filho = df_ama_filho.iloc[0]['ama_responsavel'] if not df_ama_filho.empty else ""
         
-        query = "SELECT * FROM recados WHERE (privado = 0 AND (tipo_destino = 'Geral (Todos)' OR (tipo_destino = 'Grupo de Ama Específica' AND alvo_destino = %s) OR (tipo_destino = 'Individual (Criança / Pais)' AND alvo_destino = %s))) OR (privado = 1 AND remetente LIKE %s) ORDER BY id DESC"
+        query = "SELECT DISTINCT * FROM recados WHERE (privado = 0 AND (tipo_destino = 'Geral (Todos)' OR (tipo_destino = 'Grupo de Ama Específica' AND alvo_destino = %s) OR (tipo_destino = 'Individual (Criança / Pais)' AND alvo_destino = %s))) OR (privado = 1 AND remetente LIKE %s) ORDER BY id DESC"
         df_recados = pd.read_sql_query(query, conn, params=(ama_do_filho, associado_atual, f"%{associado_atual}%"))
     
     conn.close()
@@ -1217,7 +1214,7 @@ elif menu == "💬 Mural de Recados":
                 st.info(row['mensagem'])
                 
             conn = get_db_connection()
-            df_respostas = pd.read_sql_query("SELECT * FROM respostas_recados WHERE recado_id = %s ORDER BY id ASC", conn, params=(recado_id,))
+            df_respostas = pd.read_sql_query("SELECT DISTINCT * FROM respostas_recados WHERE recado_id = %s ORDER BY id ASC", conn, params=(recado_id,))
             conn.close()
             
             if not df_respostas.empty:
