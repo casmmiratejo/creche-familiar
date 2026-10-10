@@ -1236,25 +1236,29 @@ elif menu == "💬 Mural de Recados":
     st.divider()
     st.subheader("📋 Mensagens e Mural")
     
-    conn = get_db_connection()
+conn = get_db_connection()
     if perfil_atual in ["Administrador", "Educadora"]:
-        df_recados = pd.read_sql_query("SELECT DISTINCT * FROM recados ORDER BY id DESC", conn)
+        df_recados = pd.read_sql_query("SELECT * FROM recados ORDER BY id DESC", conn)
     elif perfil_atual == "Ama":
         criancas_dela = get_criancas(associado_atual)
         if criancas_dela:
-            query = "SELECT DISTINCT * FROM recados WHERE privado = 0 AND (tipo_destino = 'Geral (Todos)' OR (tipo_destino = 'Grupo de Ama Específica' AND alvo_destino = %s) OR (tipo_destino = 'Individual (Criança / Pais)' AND alvo_destino = ANY(%s))) OR (privado = 1 AND alvo_destino = %s) ORDER BY id DESC"
+            query = "SELECT * FROM recados WHERE privado = 0 AND (tipo_destino = 'Geral (Todos)' OR (tipo_destino = 'Grupo de Ama Específica' AND alvo_destino = %s) OR (tipo_destino = 'Individual (Criança / Pais)' AND alvo_destino = ANY(%s))) OR (privado = 1 AND alvo_destino = %s) ORDER BY id DESC"
             df_recados = pd.read_sql_query(query, conn, params=(associado_atual, list(criancas_dela), associado_atual))
         else:
-            query = "SELECT DISTINCT * FROM recados WHERE privado = 0 AND (tipo_destino = 'Geral (Todos)' OR (tipo_destino = 'Grupo de Ama Específica' AND alvo_destino = %s)) OR (privado = 1 AND alvo_destino = %s) ORDER BY id DESC"
+            query = "SELECT * FROM recados WHERE privado = 0 AND (tipo_destino = 'Geral (Todos)' OR (tipo_destino = 'Grupo de Ama Específica' AND alvo_destino = %s)) OR (privado = 1 AND alvo_destino = %s) ORDER BY id DESC"
             df_recados = pd.read_sql_query(query, conn, params=(associado_atual, associado_atual))
     else: # Pais
         df_ama_filho = pd.read_sql_query("SELECT ama_responsavel FROM ficha_crianca WHERE nome_completo = %s", conn, params=(associado_atual,))
         ama_do_filho = df_ama_filho.iloc[0]['ama_responsavel'] if not df_ama_filho.empty else ""
         
-        query = "SELECT DISTINCT * FROM recados WHERE (privado = 0 AND (tipo_destino = 'Geral (Todos)' OR (tipo_destino = 'Grupo de Ama Específica' AND alvo_destino = %s) OR (tipo_destino = 'Individual (Criança / Pais)' AND alvo_destino = %s))) OR (privado = 1 AND remetente LIKE %s) ORDER BY id DESC"
+        query = "SELECT * FROM recados WHERE (privado = 0 AND (tipo_destino = 'Geral (Todos)' OR (tipo_destino = 'Grupo de Ama Específica' AND alvo_destino = %s) OR (tipo_destino = 'Individual (Criança / Pais)' AND alvo_destino = %s))) OR (privado = 1 AND remetente LIKE %s) ORDER BY id DESC"
         df_recados = pd.read_sql_query(query, conn, params=(ama_do_filho, associado_atual, f"%{associado_atual}%"))
     
     conn.close()
+
+    # 👉 ADICIONE ESTA LINHA PARA FILTRAR QUALQUER DUPLICADO VISUALMENTE
+    if not df_recados.empty:
+        df_recados = df_recados.drop_duplicates(subset=['mensagem', 'remetente', 'data_hora'])
         
     if df_recados.empty:
         st.info("Não existem mensagens ou recados para exibir.")
