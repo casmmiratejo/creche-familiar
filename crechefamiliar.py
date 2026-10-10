@@ -251,7 +251,7 @@ if not st.session_state.authenticated:
                 st.rerun()
             else:
                 st.error("Utilizador ou palavra-passe incorretos.")
-   
+    st.info("💡 **Problemas no início de sessão? Contacte a educadora responsável**")
     st.stop()
 
 # ==========================================
