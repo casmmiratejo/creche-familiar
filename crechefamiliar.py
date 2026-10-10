@@ -619,10 +619,6 @@ elif menu == "📄 Ficha da Criança":
             mae_nome = m1.text_input("Nome da Mãe")
             mae_telemovel = m2.text_input("Telemóvel da Mãe")
 
-# Certifique-se de que estes uploader estão dentro do form_inscricao_crianca:
-        foto_file = st.file_uploader("Fotografia da Criança", type=['png', 'jpg', 'jpeg'], key="foto_crianca_up")
-        docs_files = st.file_uploader("Anexar Documentos", type=['pdf', 'png', 'jpg', 'jpeg', 'doc', 'docx'], accept_multiple_files=True, key="docs_crianca_up")
-
         submit_crianca = st.form_submit_button("💾 Guardar Ficha da Criança")
 
         if submit_crianca:
