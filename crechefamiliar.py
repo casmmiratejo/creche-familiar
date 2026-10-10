@@ -322,25 +322,6 @@ if menu == "📱 Check-in QR Code (Entrada/Saída)":
     st.header("📱 Check-in Rápido de Entrada e Saída")
     st.caption("Acolhimento e entrega de crianças via leitura de QR Code ou registo rápido.")
 
-
-    # Função para gerar a imagem do QR Code em memória
-def gerar_qr_code(texto):
-    qr = qrcode.QRCode(version=1, box_size=10, border=5)
-    qr.add_data(texto)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-    
-    buffered = BytesIO()
-    img.save(buffered, format="PNG")
-    return buffered.getvalue()
-
-# Na parte visual do Check-in:
-st.subheader("📲 QR Code de Presença")
-dados_qr = "CRECHE_FAMILIAR_CHECKIN_DIARIO" # ou o ID da criança/sala
-img_bytes = gerar_qr_code(dados_qr)
-st.image(img_bytes, caption="Aponte a câmara para registar o check-in", width=250)
-
-
     if st.session_state.role == "Pais":
         crianca_checkin = st.session_state.nome_associado
         st.info(f"👦 Educando associado: **{crianca_checkin}**")
@@ -411,6 +392,24 @@ st.image(img_bytes, caption="Aponte a câmara para registar o check-in", width=2
             c.close()
             conn.close()
             st.warning(f"Saída de **{crianca_checkin}** registada às {hora_atual_str} ({nota_saida})!")
+    # Função para gerar a imagem do QR Code em memória
+def gerar_qr_code(texto):
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(texto)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    buffered = BytesIO()
+    img.save(buffered, format="PNG")
+    return buffered.getvalue()
+
+# Na parte visual do Check-in:
+st.subheader("📲 QR Code de Presença")
+dados_qr = "CRECHE_FAMILIAR_CHECKIN_DIARIO" # ou o ID da criança/sala
+img_bytes = gerar_qr_code(dados_qr)
+st.image(img_bytes, caption="Aponte a câmara para registar o check-in", width=250)
+
+
 
 # ==========================================
 # 5. MÓDULO: FICHA DE INSCRIÇÃO DA AMA
