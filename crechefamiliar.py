@@ -493,8 +493,8 @@ elif menu == "👤 Ficha da Ama":
                 else:
                     st.error("O Nome Completo da Ama é obrigatório.")
 
-    with aba_ama_2:
-        st.subheader("🔍 Consultar / Geritar Fichas de Amas")
+with aba_ama_2:
+        st.subheader("🔍 Consultar e Gerir Fichas de Amas")
         todas_amas = get_amas(incluir_arquivadas=True)
         if todas_amas:
             ama_selecionada = st.selectbox("Selecione a Ama para consultar:", todas_amas, key="sel_cons_ama")
@@ -505,12 +505,43 @@ elif menu == "👤 Ficha da Ama":
             if not df_detalhe_ama.empty:
                 reg_ama = df_detalhe_ama.iloc[0]
                 status_arq = "🔴 Arquivada" if reg_ama['arquivada'] == 1 else "🟢 Ativa"
-                st.markdown(f"**Estado Atual:** {status_arq}")
-                st.write(dict(reg_ama))
                 
+                # Cabeçalho limpo com o estado
+                col_h1, col_h2 = st.columns([3, 1])
+                col_h1.markdown(f"### Ficha de: **{reg_ama['nome_completo']}**")
+                col_h2.markdown(f"**Estado:** {status_arq}")
+                
+                st.markdown("---")
+                
+                # Exibição organizada por secções
+                col_d1, col_d2 = st.columns(2)
+                with col_d1:
+                    st.markdown("#### 📋 Dados Institucionais e Pessoais")
+                    st.write(f"**CRSS:** {reg_ama['crss']}")
+                    st.write(f"**Enquadramento Legal:** {reg_ama['decreto']}")
+                    st.write(f"**Naturalidade:** {reg_ama['naturalidade']}")
+                    st.write(f"**Data de Nascimento:** {reg_ama['data_nascimento']}")
+                    st.write(f"**Estado Civil:** {reg_ama['estado_civil']}")
+                    st.write(f"**Morada:** {reg_ama['morada']}")
+                    st.write(f"**Contactos:** {reg_ama['contactos']}")
+                    st.write(f"**Sabe ler e escrever:** {reg_ama['sabe_ler_escrever']}")
+                
+                with col_d2:
+                    st.markdown("#### 🎓 Habilitações e Habitação")
+                    st.write(f"**Habilitações Literárias:** {reg_ama['habilitacoes_literarias']}")
+                    st.write(f"**Habilitações Profissionais:** {reg_ama['habilitacoes_profissionais']}")
+                    st.write(f"**Tipo de Casa:** {reg_ama['tipo_casa']} (Regime: {reg_ama['regime_casa']})")
+                    st.write(f"**N.º de Divisões:** {reg_ama['num_divisoes']}")
+                    st.write(f"**Coabitantes:** {reg_ama['coabitantes']}")
+                
+                st.markdown("---")
+                st.write(f"**Experiência Anterior:** {reg_ama['experiencia_anterior']}")
+                st.write(f"**Motivação para a Atividade:** {reg_ama['motivacao_atividade']}")
+                
+                st.markdown("---")
                 col_arq1, col_arq2 = st.columns(2)
                 if reg_ama['arquivada'] == 0:
-                    if col_arq1.button("📁 Arquivar Ama"):
+                    if col_arq1.button("📁 Arquivar Ama", key="btn_arq_ama"):
                         conn = get_db_connection()
                         c = conn.cursor()
                         c.execute("UPDATE ficha_ama SET arquivada = 1 WHERE id = %s", (int(reg_ama['id']),))
@@ -520,7 +551,7 @@ elif menu == "👤 Ficha da Ama":
                         st.success("Ama arquivada com sucesso!")
                         st.rerun()
                 else:
-                    if col_arq2.button("📂 Desarquivar Ama"):
+                    if col_arq2.button("📂 Desarquivar Ama", key="btn_desarq_ama"):
                         conn = get_db_connection()
                         c = conn.cursor()
                         c.execute("UPDATE ficha_ama SET arquivada = 0 WHERE id = %s", (int(reg_ama['id']),))
@@ -531,7 +562,6 @@ elif menu == "👤 Ficha da Ama":
                         st.rerun()
         else:
             st.info("Ainda não existem amas registadas.")
-
 # ==========================================
 # 6. MÓDULO: FICHA DA CRIANÇA (COM CONSULTA E ARQUIVAMENTO)
 # ==========================================
@@ -594,8 +624,8 @@ elif menu == "📄 Ficha da Criança":
                 else:
                     st.error("O Nome Completo da Criança é obrigatório.")
 
-    with aba_cri_2:
-        st.subheader("🔍 Consultar / Geritar Fichas de Crianças")
+with aba_cri_2:
+        st.subheader("🔍 Consultar e Gerir Fichas de Crianças")
         todas_criancas = get_criancas(incluir_arquivadas=True)
         if todas_criancas:
             crianca_selecionada = st.selectbox("Selecione a Criança para consultar:", todas_criancas, key="sel_cons_cri")
@@ -606,12 +636,40 @@ elif menu == "📄 Ficha da Criança":
             if not df_detalhe_cri.empty:
                 reg_cri = df_detalhe_cri.iloc[0]
                 status_arq_c = "🔴 Arquivada" if reg_cri['arquivada'] == 1 else "🟢 Ativa"
-                st.markdown(f"**Estado Atual:** {status_arq_c}")
-                st.write(dict(reg_cri))
                 
+                # Cabeçalho limpo com o estado
+                col_hc1, col_hc2 = st.columns([3, 1])
+                col_hc1.markdown(f"### Ficha do Educando: **{reg_cri['nome_completo']}**")
+                col_hc2.markdown(f"**Estado:** {status_arq_c}")
+                
+                st.markdown("---")
+                
+                # Exibição organizada por colunas
+                col_dc1, col_dc2 = st.columns(2)
+                with col_dc1:
+                    st.markdown("#### 📄 Dados Administrativos")
+                    st.write(f"**N.º de Processo:** {reg_cri['processo']}")
+                    st.write(f"**Data de Entrada:** {reg_cri['data_entrada']}")
+                    st.write(f"**Despacho / Estado:** {reg_cri['despacho']}")
+                    st.write(f"**Ama Responsável:** {reg_cri['ama_responsavel']}")
+                    st.markdown("#### 👦 Identificação da Criança")
+                    st.write(f"**Naturalidade:** {reg_cri['naturalidade']}")
+                    st.write(f"**Data de Nascimento:** {reg_cri['data_nascimento']}")
+                    st.write(f"**Sexo:** {reg_cri['sexo']}")
+                    st.write(f"**N.º Identificação (CC):** {reg_cri['num_identificacao']}")
+                    st.write(f"**NIF / NISS:** {reg_cri['nif']} / {reg_cri['niss']}")
+                
+                with col_dc2:
+                    st.markdown("#### 👪 Filiação e Contactos")
+                    st.write(f"**Nome do Pai:** {reg_cri['pai_nome']}")
+                    st.write(f"**Telemóvel do Pai:** {reg_cri['pai_telemovel']}")
+                    st.write(f"**Nome da Mãe:** {reg_cri['mae_nome']}")
+                    st.write(f"**Telemóvel da Mãe:** {reg_cri['mae_telemovel']}")
+                
+                st.markdown("---")
                 col_arq_c1, col_arq_c2 = st.columns(2)
                 if reg_cri['arquivada'] == 0:
-                    if col_arq_c1.button("📁 Arquivar Criança"):
+                    if col_arq_c1.button("📁 Arquivar Criança", key="btn_arq_cri"):
                         conn = get_db_connection()
                         c = conn.cursor()
                         c.execute("UPDATE ficha_crianca SET arquivada = 1 WHERE id = %s", (int(reg_cri['id']),))
@@ -621,7 +679,7 @@ elif menu == "📄 Ficha da Criança":
                         st.success("Criança arquivada com sucesso!")
                         st.rerun()
                 else:
-                    if col_arq_c2.button("📂 Desarquivar Criança"):
+                    if col_arq_c2.button("📂 Desarquivar Criança", key="btn_desarq_cri"):
                         conn = get_db_connection()
                         c = conn.cursor()
                         c.execute("UPDATE ficha_crianca SET arquivada = 0 WHERE id = %s", (int(reg_cri['id']),))
@@ -632,7 +690,6 @@ elif menu == "📄 Ficha da Criança":
                         st.rerun()
         else:
             st.info("Ainda não existem crianças registadas.")
-
 # ==========================================
 # 7. MÓDULO: ROTINAS E CUIDADOS DIÁRIOS (AMA)
 # ==========================================
