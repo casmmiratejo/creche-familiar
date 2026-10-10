@@ -577,6 +577,7 @@ elif menu == "👤 Ficha da Ama":
                         st.rerun()
         else:
             st.info("Ainda não existem amas registadas.")
+
 # ==========================================
 # 6. MÓDULO: FICHA DA CRIANÇA (COM CONSULTA E ARQUIVAMENTO)
 # ==========================================
@@ -619,25 +620,45 @@ elif menu == "📄 Ficha da Criança":
             mae_nome = m1.text_input("Nome da Mãe")
             mae_telemovel = m2.text_input("Telemóvel da Mãe")
 
+            st.subheader("5. Anexos e Documentos")
+            foto_file = st.file_uploader("Fotografia da Criança", type=['png', 'jpg', 'jpeg'], key="foto_crianca_up")
+            docs_files = st.file_uploader("Anexar Documentos (PDF, etc.)", type=['pdf', 'png', 'jpg', 'jpeg', 'doc', 'docx'], accept_multiple_files=True, key="docs_crianca_up")
+
             submit_crianca = st.form_submit_button("💾 Guardar Ficha da Criança")
 
-            if submit_crianca:
-                if nome_completo:
-                    conn = get_db_connection()
-                    c = conn.cursor()
-                    c.execute('''INSERT INTO ficha_crianca 
-                               (processo, data_entrada, despacho, ama_responsavel, nome_completo, naturalidade, data_nascimento, sexo,
-                                num_identificacao, validade_identificacao, nif, niss, pai_nome, pai_telemovel, mae_nome, mae_telemovel, arquivada)
-                               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, 0)''',
-                              (processo, str(data_entrada), despacho, ama_responsavel_sel, nome_completo, naturalidade, str(data_nascimento), sexo,
-                               num_identificacao, validade_identificacao, nif, niss, pai_nome, pai_telemovel, mae_nome, mae_telemovel))
-                    conn.commit()
-                    c.close()
-                    conn.close()
-                    st.success(f"Ficha de {nome_completo} guardada com sucesso!")
-                    st.rerun()
-                else:
-                    st.error("O Nome Completo da Criança é obrigatório.")
+        if submit_crianca:
+            if nome_completo:
+                # Conversão da Fotografia para Base64
+                foto_b64 = ""
+                if foto_file is not None:
+                    foto_bytes = foto_file.read()
+                    foto_b64 = base64.b64encode(foto_bytes).decode('utf-8')
+
+                # Conversão dos Documentos Anexos para Base64
+                docs_saved = []
+                if docs_files:
+                    for doc in docs_files:
+                        doc_bytes = doc.read()
+                        doc_b64 = base64.b64encode(doc_bytes).decode('utf-8')
+                        docs_saved.append(f"{doc.name}:{doc_b64}")
+                docs_str = "||".join(docs_saved)
+
+                conn = get_db_connection()
+                c = conn.cursor()
+                c.execute('''INSERT INTO ficha_crianca 
+                           (processo, data_entrada, despacho, ama_responsavel, nome_completo, naturalidade, data_nascimento, sexo,
+                            num_identificacao, validade_identificacao, nif, niss, pai_nome, pai_telemovel, mae_nome, mae_telemovel, foto_path, docs_paths, arquivada)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, 0)''',
+                          (processo, str(data_entrada), despacho, ama_responsavel_sel, nome_completo, naturalidade, str(data_nascimento), sexo,
+                           num_identificacao, validade_identificacao, nif, niss, pai_nome, pai_telemovel, mae_nome, mae_telemovel, foto_b64, docs_str))
+                conn.commit()
+                c.close()
+                conn.close()
+                st.success(f"Ficha de {nome_completo} guardada com sucesso!")
+                st.rerun()
+            else:
+                st.error("O Nome Completo da Criança é obrigatório.")
+                
     with aba_cri_2:
         st.subheader("🔍 Consultar e Gerir Fichas de Crianças")
         todas_criancas = get_criancas(incluir_arquivadas=True)
@@ -661,6 +682,14 @@ elif menu == "📄 Ficha da Criança":
                 # Exibição organizada por colunas
                 col_dc1, col_dc2 = st.columns(2)
                 with col_dc1:
+                    # Exibir Fotografia se existir
+                    if reg_cri.get('foto_path') and len(reg_cri['foto_path']) > 50:
+                        try:
+                            foto_bytes_dec = base64.b64decode(reg_cri['foto_path'])
+                            st.image(foto_bytes_dec, width=150, caption="Fotografia da Criança")
+                        except Exception:
+                            pass
+
                     st.markdown("#### 📄 Dados Administrativos")
                     st.write(f"**N.º de Processo:** {reg_cri['processo']}")
                     st.write(f"**Data de Entrada:** {reg_cri['data_entrada']}")
@@ -679,6 +708,24 @@ elif menu == "📄 Ficha da Criança":
                     st.write(f"**Telemóvel do Pai:** {reg_cri['pai_telemovel']}")
                     st.write(f"**Nome da Mãe:** {reg_cri['mae_nome']}")
                     st.write(f"**Telemóvel da Mãe:** {reg_cri['mae_telemovel']}")
+
+                    # Exibir Documentos Anexos se existirem
+                    if reg_cri.get('docs_paths') and len(reg_cri['docs_paths']) > 5:
+                        st.markdown("#### 📁 Documentos Anexos")
+                        docs_list = reg_cri['docs_paths'].split("||")
+                        for doc_item in docs_list:
+                            if ":" in doc_item:
+                                doc_name, doc_data_b64 = doc_item.split(":", 1)
+                                try:
+                                    doc_bytes_dec = base64.b64decode(doc_data_b64)
+                                    st.download_button(
+                                        label=f"📥 Descarregar {doc_name}",
+                                        data=doc_bytes_dec,
+                                        file_name=doc_name,
+                                        key=f"dl_doc_{reg_cri['id']}_{doc_name}"
+                                    )
+                                except Exception:
+                                    pass
                 
                 st.markdown("---")
                 col_arq_c1, col_arq_c2 = st.columns(2)
@@ -704,6 +751,7 @@ elif menu == "📄 Ficha da Criança":
                         st.rerun()
         else:
             st.info("Ainda não existem crianças registadas.")
+
 # ==========================================
 # 7. MÓDULO: ROTINAS E CUIDADOS DIÁRIOS (AMA)
 # ==========================================
