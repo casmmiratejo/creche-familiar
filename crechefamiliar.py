@@ -406,12 +406,12 @@ if menu == "📱 Check-in QR Code (Entrada/Saída)":
     with col_ck3:
         st.subheader("3. QR Code de Acolhimento")
         
-        # ⚠️ IMPORTANTE: Substitua o link abaixo pelo URL real da sua aplicação na Streamlit Cloud
-        url_base_app = "https://creche-familiar.streamlit.app"
+        # Substitua este link pelo URL público exato da sua app no Streamlit Cloud
+        url_base_app = "https://creche-familiar.streamlit.app"  # Exemplo de URL
         
-        texto_qr = f"{url_base_app}?crianca={crianca_checkin}"
+        texto_qr = f"{url_base_app}"
         img_qr_bytes = gerar_qr_code(texto_qr)
-        st.image(img_qr_bytes, caption=f"Aceder à App: {crianca_checkin}", width=160)
+        st.image(img_qr_bytes, caption="Aponte a câmara para aceder à aplicação", width=160)
 # ==========================================
 # 5. MÓDULO: FICHA DA AMA (COM CONSULTA E ARQUIVAMENTO)
 # ==========================================
