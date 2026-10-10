@@ -208,23 +208,40 @@ AMAS = get_amas()
 
 def get_criancas(ama_filtro=None, incluir_arquivadas=False):
     conn = get_db_connection()
-    if ama_filtro:
+    
+    # 🔒 VERIFICAÇÃO DE SEGURANÇA POR PERFIL
+    role = st.session_state.get('role', '')
+    username = st.session_state.get('username', '')
+    
+    if role == "Pais":
+        # Se for Pai/Mãe, só pode ver as crianças cujo nome do pai ou da mãe corresponda ao username
         if incluir_arquivadas:
-            df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca WHERE ama_responsavel = %s", conn, params=(ama_filtro,))
+            df = pd.read_sql_query(
+                "SELECT nome_completo FROM ficha_crianca WHERE pai_nome = %s OR mae_nome = %s", 
+                conn, params=(username, username)
+            )
         else:
-            df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca WHERE ama_responsavel = %s AND arquivada = 0", conn, params=(ama_filtro,))
+            df = pd.read_sql_query(
+                "SELECT nome_completo FROM ficha_crianca WHERE (pai_nome = %s OR mae_nome = %s) AND arquivada = 0", 
+                conn, params=(username, username)
+            )
     else:
-        if incluir_arquivadas:
-            df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca", conn)
+        # Administradores, Educadoras e Amas têm acesso global (ou filtrado por ama)
+        if ama_filtro:
+            if incluir_arquivadas:
+                df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca WHERE ama_responsavel = %s", conn, params=(ama_filtro,))
+            else:
+                df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca WHERE ama_responsavel = %s AND arquivada = 0", conn, params=(ama_filtro,))
         else:
-            df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca WHERE arquivada = 0", conn)
+            if incluir_arquivadas:
+                df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca", conn)
+            else:
+                df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca WHERE arquivada = 0", conn)
+                
     conn.close()
     if df.empty:
         return []
     return df["nome_completo"].tolist()
-
-CRIANCAS = get_criancas()
-
 def gerar_qr_code(texto):
     qr = qrcode.QRCode(version=1, box_size=10, border=5)
     qr.add_data(texto)
