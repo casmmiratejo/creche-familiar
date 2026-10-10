@@ -1236,7 +1236,7 @@ elif menu == "💬 Mural de Recados":
     st.divider()
     st.subheader("📋 Mensagens e Mural")
     
-conn = get_db_connection()
+    conn = get_db_connection()
     if perfil_atual in ["Administrador", "Educadora"]:
         df_recados = pd.read_sql_query("SELECT * FROM recados ORDER BY id DESC", conn)
     elif perfil_atual == "Ama":
