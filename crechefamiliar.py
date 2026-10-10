@@ -356,7 +356,7 @@ if menu == "📱 Check-in QR Code (Entrada/Saída)":
         crianca_checkin = st.session_state.nome_associado
         st.info(f"👦 Educando associado: **{crianca_checkin}**")
     else:
-        crianca_checkin = st.selectbox("Selecione a Criança:", CRIANCAS)
+        crianca_checkin = st.selectbox("Selecione a Criança:", get_criancas())
         
     st.markdown("---")
     
