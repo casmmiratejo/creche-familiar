@@ -251,8 +251,7 @@ if not st.session_state.authenticated:
                 st.rerun()
             else:
                 st.error("Utilizador ou palavra-passe incorretos.")
-    
-    st.info("💡 **Conta Predefinida:**\n* **Administrador:** `admin` / `admin123`")
+   
     st.stop()
 
 # ==========================================
