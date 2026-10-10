@@ -493,7 +493,7 @@ elif menu == "👤 Ficha da Ama":
                 else:
                     st.error("O Nome Completo da Ama é obrigatório.")
 
-with aba_ama_2:
+    with aba_ama_2:
         st.subheader("🔍 Consultar e Gerir Fichas de Amas")
         todas_amas = get_amas(incluir_arquivadas=True)
         if todas_amas:
@@ -624,7 +624,7 @@ elif menu == "📄 Ficha da Criança":
                 else:
                     st.error("O Nome Completo da Criança é obrigatório.")
 
-with aba_cri_2:
+    with aba_cri_2:
         st.subheader("🔍 Consultar e Gerir Fichas de Crianças")
         todas_criancas = get_criancas(incluir_arquivadas=True)
         if todas_criancas:
