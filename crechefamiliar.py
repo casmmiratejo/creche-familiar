@@ -17,16 +17,13 @@ os.makedirs('mapas_presencas', exist_ok=True)
 # 1. CONFIGURAÇÃO DA BASE DE DADOS (SUPABASE / POSTGRESQL)
 # ==========================================
 def get_db_connection():
+    # Lê a ligação segura configurada nos Secrets do Streamlit ou usa fallback local
     if "postgres" in st.secrets:
         db_url = st.secrets["postgres"]["url"]
     else:
+        # Fallback para teste local (substitua se testar localmente com postgres)
         db_url = "postgresql://postgres:password@localhost:5432/postgres"
-    
-    try:
-        return psycopg2.connect(db_url)
-    except Exception as e:
-        st.error(f"❌ Erro exato de ligação ao Supabase: {e}")
-        st.stop()
+    return psycopg2.connect(db_url)
 
 def init_db():
     conn = get_db_connection()
