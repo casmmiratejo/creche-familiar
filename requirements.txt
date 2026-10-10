@@ -1,0 +1,6 @@
+streamlit
+pandas
+openpyxl
+python-docx
+qrcode[pil]
+psycopg2-binary
