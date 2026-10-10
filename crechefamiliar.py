@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import os
+import io
 from io import BytesIO
 import qrcode
 from docx import Document
