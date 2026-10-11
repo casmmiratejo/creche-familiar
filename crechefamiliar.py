@@ -201,10 +201,8 @@ def get_amas(incluir_arquivadas=False):
         if incluir_arquivadas:
             df = pd.read_sql_query("SELECT nome_completo FROM ficha_ama", conn)
         else:
-            # Caso tenha uma coluna 'arquivada' na tabela ficha_ama
             df = pd.read_sql_query("SELECT nome_completo FROM ficha_ama WHERE arquivada = 0", conn)
     except Exception:
-        # Se por acaso a tabela das amas ainda não tiver a coluna 'arquivada', busca tudo para prevenir erros
         df = pd.read_sql_query("SELECT nome_completo FROM ficha_ama", conn)
     finally:
         conn.close()
@@ -212,7 +210,7 @@ def get_amas(incluir_arquivadas=False):
     if df.empty:
         return []
     return df["nome_completo"].tolist()
-
+    
 AMAS = get_amas()
 
 
