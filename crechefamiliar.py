@@ -195,9 +195,14 @@ init_db()
 st.set_page_config(page_title="Gestão Creche Familiar", page_icon="🏡", layout="wide")
 
 @st.cache_data(ttl=60)
-def get_amas(incluir_arquivadas=False):
+def get_amas(*args, **kwargs):
     conn = get_db_connection()
     try:
+        # Verifica se foi pedido para incluir arquivadas
+        incluir_arquivadas = kwargs.get('incluir_arquivadas', False)
+        if len(args) > 0:
+            incluir_arquivadas = args[0]
+            
         if incluir_arquivadas:
             df = pd.read_sql_query("SELECT nome_completo FROM ficha_ama", conn)
         else:
