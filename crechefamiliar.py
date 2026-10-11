@@ -254,16 +254,6 @@ def get_criancas(ama_filtro=None, incluir_arquivadas=False, role="", username=""
     return df["nome_completo"].tolist()
 
 
-@st.cache_data(ttl=60)
-def get_amas():
-    conn = get_db_connection()
-    try:
-        df = pd.read_sql_query("SELECT nome_completo FROM ficha_ama", conn)
-    finally:
-        conn.close()
-    if df.empty:
-        return []
-    return df["nome_completo"].tolist()
 
 def gerar_qr_code(texto):
     qr = qrcode.QRCode(version=1, box_size=10, border=5)
