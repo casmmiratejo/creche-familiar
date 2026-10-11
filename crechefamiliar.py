@@ -194,13 +194,21 @@ init_db()
 # ==========================================
 st.set_page_config(page_title="Gestão Creche Familiar", page_icon="🏡", layout="wide")
 
+@st.cache_data(ttl=60)
 def get_amas(incluir_arquivadas=False):
     conn = get_db_connection()
-    if incluir_arquivadas:
+    try:
+        if incluir_arquivadas:
+            df = pd.read_sql_query("SELECT nome_completo FROM ficha_ama", conn)
+        else:
+            # Caso tenha uma coluna 'arquivada' na tabela ficha_ama
+            df = pd.read_sql_query("SELECT nome_completo FROM ficha_ama WHERE arquivada = 0", conn)
+    except Exception:
+        # Se por acaso a tabela das amas ainda não tiver a coluna 'arquivada', busca tudo para prevenir erros
         df = pd.read_sql_query("SELECT nome_completo FROM ficha_ama", conn)
-    else:
-        df = pd.read_sql_query("SELECT nome_completo FROM ficha_ama WHERE arquivada = 0", conn)
-    conn.close()
+    finally:
+        conn.close()
+        
     if df.empty:
         return []
     return df["nome_completo"].tolist()
