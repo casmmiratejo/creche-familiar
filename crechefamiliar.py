@@ -368,7 +368,14 @@ if menu == "📱 Check-in QR Code (Entrada/Saída)":
         crianca_checkin = st.session_state.nome_associado
         st.info(f"👦 Educando associado: **{crianca_checkin}**")
     else:
-        crianca_checkin = st.selectbox("Selecione a Criança:", get_criancas())
+        # 1. Pede a lista filtrada para o utilizador atual
+        lista_criancas = get_criancas(
+            role=st.session_state.get('role', ''), 
+            username=st.session_state.get('username', '')
+        )
+
+# 2. Desenha o selectbox com essa lista
+        crianca_checkin = st.selectbox("Selecione a Criança:", lista_criancas)
         
     st.markdown("---")
     
@@ -698,9 +705,17 @@ elif menu == "📄 Ficha da Criança":
                 
     with aba_cri_2:
         st.subheader("🔍 Consultar e Gerir Fichas de Crianças")
-        todas_criancas = get_criancas(incluir_arquivadas=True)
+        
+        # Atualizado para passar o role e o username de forma segura
+        todas_criancas = get_criancas(
+            incluir_arquivadas=True, 
+            role=st.session_state.get('role', ''), 
+            username=st.session_state.get('username', '')
+        )
+        
         if todas_criancas:
             crianca_selecionada = st.selectbox("Selecione a Criança para consultar:", todas_criancas, key="sel_cons_cri")
+            # ... resto do código ...
             conn = get_db_connection()
             df_detalhe_cri = pd.read_sql_query("SELECT * FROM ficha_crianca WHERE nome_completo = %s", conn, params=(crianca_selecionada,))
             conn.close()
