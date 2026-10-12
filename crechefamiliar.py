@@ -319,10 +319,10 @@ if st.session_state.role == "Administrador":
         "📱 Check-in QR Code (Entrada/Saída)",
         "👤 Ficha da Ama",
         "📄 Ficha da Criança",
-        "📝 Rotinas e Cuidados Diários (Ama)", 
+        "📝 Rotina e Cuidados Diários", 
         "🎨 Atividades e Ocorrências", 
         "📊 Relatórios e Impressão",
-        "👩‍🏫 Supervisão (Educadora)",
+        "👩‍🏫 Painel da Educadora",
         "👥 Gestão de Utilizadores",
         "💬 Mural de Recados"
     ])
@@ -331,22 +331,20 @@ elif st.session_state.role == "Educadora":
         "📱 Check-in QR Code (Entrada/Saída)",
         "👤 Ficha da Ama",
         "📄 Ficha da Criança",
-        "📝 Rotinas e Cuidados Diários (Ama)", 
+        "📝 Rotina e Cuidados Diários", 
         "🎨 Atividades e Ocorrências", 
         "📊 Relatórios e Impressão",
-        "👩‍🏫 Supervisão (Educadora)",
+        "👩‍🏫 Painel da Educadora",
         "👥 Gestão de Utilizadores",
         "💬 Mural de Recados"
     ])
 elif st.session_state.role == "Ama":
-    # Ama vê apenas: Check-in, Rotinas e Mural de Recados
     menu = st.sidebar.radio("Menu (Ama):", [
         "📱 Check-in QR Code (Entrada/Saída)",
-        "📝 Rotinas e Cuidados Diários (Ama)",
+        "📝 Rotina e Cuidados Diários",
         "💬 Mural de Recados"
     ])
 else: # Pais
-    # Pais veem apenas: Check-in, Espaço dos Pais e Mural de Recados
     menu = st.sidebar.radio("Menu (Pais):", [
         "📱 Check-in QR Code (Entrada/Saída)",
         "👨‍👩‍👧 Espaço dos Pais (Rotinas e Presenças)",
@@ -782,9 +780,9 @@ elif menu == "📄 Ficha da Criança":
             st.info("Ainda não existem crianças registadas.")
 
 # ==========================================
-# 7. MÓDULO: ROTINAS E CUIDADOS DIÁRIOS (AMA)
+# 7. MÓDULO: ROTINA E CUIDADOS DIÁRIOS
 # ==========================================
-elif menu == "📝 Rotinas e Cuidados Diários (Ama)":
+elif menu == "📝 Rotina e Cuidados Diários":
     st.header("📝 Registo Diário de Rotinas e Cuidados")
     
     ama_atual = st.session_state.nome_associado if st.session_state.role == "Ama" else None
@@ -1120,9 +1118,9 @@ elif menu == "📊 Relatórios e Impressão":
             )
 
 # ==========================================
-# 11. MÓDULO: SUPERVISÃO (EDUCADORA)
+# 11. MÓDULO: PAINEL DA EDUCADORA
 # ==========================================
-elif menu == "👩‍🏫 Supervisão (Educadora)":
+elif menu == "👩‍🏫 Painel da Educadora":
     st.header("👩‍🏫 Painel da Educadora de Infância")
     
     filtro_crianca = st.selectbox("Filtrar por Criança:", ["Todas"] + get_criancas())
@@ -1167,7 +1165,6 @@ elif menu == "👥 Gestão de Utilizadores":
         
         col_u3, col_u4 = st.columns(2)
         
-        # A Educadora não pode criar contas de Administrador
         perfis_permitidos = ["Educadora", "Ama", "Pais", "Administrador"] if st.session_state.role == "Administrador" else ["Educadora", "Ama", "Pais"]
         novo_role = col_u3.selectbox("Perfil de Utilizador", perfis_permitidos, key="novo_role_sel")
         
