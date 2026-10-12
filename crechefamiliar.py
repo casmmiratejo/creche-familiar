@@ -10,6 +10,8 @@ from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import psycopg2
 import base64
+import zipfile
+import json
 
 # Criar pastas base locais para ficheiros temporários (fotos e docs)
 os.makedirs('uploads', exist_ok=True)
@@ -161,6 +163,10 @@ def init_db():
                     observacoes TEXT,
                     fotos_paths TEXT
                 )''')
+    
+    # Garantir colunas em tabelas existentes caso já tenham sido criadas anteriormente sem elas
+    c.execute("ALTER TABLE registos_diarios ADD COLUMN IF NOT EXISTS observacoes TEXT;")
+    c.execute("ALTER TABLE registos_diarios ADD COLUMN IF NOT EXISTS fotos_paths TEXT;")
     
     # Tabela de Atividades, Ocorrências e Fotos
     c.execute('''CREATE TABLE IF NOT EXISTS atividades (
@@ -341,7 +347,8 @@ if st.session_state.role == "Administrador":
         "📊 Relatórios e Impressão",
         "👩‍🏫 Painel da Educadora",
         "👥 Gestão de Utilizadores",
-        "💬 Mural de Recados"
+        "💬 Mural de Recados",
+        "💾 Backup e Dados (Admin)"
     ])
 elif st.session_state.role == "Educadora":
     menu = st.sidebar.radio("Menu (Educadora):", [
@@ -815,7 +822,6 @@ elif menu == "📝 Rotina e Cuidados Diários":
             data_registo = col1.date_input("Data do Registo", datetime.today())
             crianca = col2.selectbox("Criança", criancas_disponiveis)
             
-            # Atualização automática da Ama responsável pela criança selecionada
             ama_automatica = get_ama_responsavel_crianca(crianca)
             st.info(f"👩‍🍼 Ama Responsável Automática: **{ama_automatica}**")
             
@@ -1431,3 +1437,71 @@ elif menu == "💬 Mural de Recados":
                             st.success("Resposta enviada!")
                             st.rerun()
             st.markdown("---")
+
+# ==========================================
+# 14. MÓDULO: BACKUP E DADOS (ADMIN)
+# ==========================================
+elif menu == "💾 Backup e Dados (Admin)":
+    st.header("💾 Cópia de Segurança Completa (Backup)")
+    st.caption("Exporte toda a informação da base de dados (JSON) e todos os anexos (fotos e documentos) num ficheiro ZIP para o seu computador.")
+    
+    if st.session_state.role != "Administrador":
+        st.error("Acesso restrito exclusivamente ao Administrador.")
+    else:
+        st.markdown("---")
+        st.write("O ficheiro de backup gerado conterá:")
+        st.markdown("""
+        * 📊 **Base de dados completa** (`dados_completos.json`) com as tabelas de:
+          - Utilizadores
+          - Fichas de Amas
+          - Fichas de Crianças (incluindo imagens e documentos em base64)
+          - Rotinas Diárias
+          - Atividades e Ocorrências
+          - Assiduidade / Check-in
+          - Recados e Respostas
+        * 📁 **Pasta de uploads** com todas as fotografias e documentos guardados no servidor.
+        """)
+        
+        if st.button("🚀 Gerar e Descarregar Backup Geral (.zip)", type="primary"):
+            with st.spinner("A gerar cópia de segurança de todos os dados e anexos..."):
+                conn = get_db_connection()
+                tabelas = ["utilizadores", "ficha_ama", "ficha_crianca", "registos_diarios", "atividades", "assiduidade", "recados", "respostas_recados"]
+                dados_backup = {}
+                for tab in tabelas:
+                    try:
+                        df_tab = pd.read_sql_query(f"SELECT * FROM {tab}", conn)
+                        dados_backup[tab] = df_tab.to_dict(orient="records")
+                    except Exception:
+                        dados_backup[tab] = []
+                conn.close()
+                
+                json_bytes = json.dumps(dados_backup, ensure_ascii=False, indent=4).encode('utf-8')
+                
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                    zip_file.writestr("dados_completos.json", json_bytes)
+                    
+                    pastas_para_arquivar = ['uploads', 'relatorios_criancas', 'mapas_presencas']
+                    for pasta in pastas_para_arquivar:
+                        if os.path.exists(pasta):
+                            for root, dirs, files in os.walk(pasta):
+                                for file in files:
+                                    caminho_completo = os.path.join(root, file)
+                                    caminho_relativo = os.path.relpath(caminho_completo, start=".")
+                                    try:
+                                        zip_file.write(caminho_completo, caminho_relativo)
+                                    except Exception:
+                                        pass
+                                        
+                zip_buffer.seek(0)
+                data_atual_str = datetime.today().strftime('%Y%m%d_%H%M%S')
+                nome_zip = f"Backup_CrecheFamiliar_{data_atual_str}.zip"
+                
+                st.success("Backup gerado com sucesso!")
+                st.download_button(
+                    label="📥 Clique aqui para descarregar o Ficheiro ZIP",
+                    data=zip_buffer,
+                    file_name=nome_zip,
+                    mime="application/zip",
+                    type="primary"
+                )
