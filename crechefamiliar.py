@@ -233,6 +233,11 @@ def get_criancas(ama_filtro=None, incluir_arquivadas=False, role="", username=""
                     "SELECT nome_completo FROM ficha_crianca WHERE (pai_nome = %s OR mae_nome = %s) AND arquivada = 0", 
                     conn, params=(username, username)
                 )
+        elif role == "Ama" and ama_filtro:
+            if incluir_arquivadas:
+                df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca WHERE ama_responsavel = %s", conn, params=(ama_filtro,))
+            else:
+                df = pd.read_sql_query("SELECT nome_completo FROM ficha_crianca WHERE ama_responsavel = %s AND arquivada = 0", conn, params=(ama_filtro,))
         else:
             if ama_filtro:
                 if incluir_arquivadas:
@@ -250,6 +255,18 @@ def get_criancas(ama_filtro=None, incluir_arquivadas=False, role="", username=""
     if df.empty:
         return []
     return df["nome_completo"].tolist()
+
+def get_ama_responsavel_crianca(nome_crianca):
+    conn = get_db_connection()
+    try:
+        df = pd.read_sql_query("SELECT ama_responsavel FROM ficha_crianca WHERE nome_completo = %s", conn, params=(nome_crianca,))
+        if not df.empty and df.iloc[0]['ama_responsavel']:
+            return df.iloc[0]['ama_responsavel']
+    except Exception:
+        pass
+    finally:
+        conn.close()
+    return AMAS[0] if AMAS else ""
 
 def gerar_qr_code(texto):
     qr = qrcode.QRCode(version=1, box_size=10, border=5)
@@ -362,7 +379,9 @@ if menu == "📱 Check-in QR Code (Entrada/Saída)":
         crianca_checkin = st.session_state.nome_associado
         st.info(f"👦 Educando associado: **{crianca_checkin}**")
     else:
+        ama_filtro_arg = st.session_state.nome_associado if st.session_state.role == "Ama" else None
         lista_criancas = get_criancas(
+            ama_filtro=ama_filtro_arg,
             role=st.session_state.get('role', ''), 
             username=st.session_state.get('username', '')
         )
@@ -786,72 +805,78 @@ elif menu == "📝 Rotina e Cuidados Diários":
     st.header("📝 Registo Diário de Rotinas e Cuidados")
     
     ama_atual = st.session_state.nome_associado if st.session_state.role == "Ama" else None
-    criancas_disponiveis = get_criancas(ama_atual)
+    criancas_disponiveis = get_criancas(ama_filtro=ama_atual, role=st.session_state.get('role', ''), username=st.session_state.get('username', ''))
     
-    with st.form("form_cuidados"):
-        col1, col2, col3 = st.columns(3)
-        data_registo = col1.date_input("Data do Registo", datetime.today())
-        crianca = col2.selectbox("Criança", criancas_disponiveis if criancas_disponiveis else get_criancas())
-        ama = col3.selectbox("Ama Responsável", AMAS, index=AMAS.index(ama_atual) if ama_atual in AMAS else 0)
-        
-        st.subheader("1. Bem-Estar")
-        bem_estar = st.radio("Estado Geral / Disposição:", ["Bem-disposto", "Sensível", "Agitado", "Doente"], horizontal=True)
-        
-        st.subheader("2. Alimentação")
-        col_a1, col_a2 = st.columns(2)
-        almoco = col_a1.radio("Almoço:", ["Bem", "Mal"], horizontal=True)
-        lanche = col_a2.radio("Lanche:", ["Bem", "Mal"], horizontal=True)
-        
-        st.subheader("3. Sono")
-        col_s1, col_s2 = st.columns(2)
-        sono_manha = col_s1.text_input("Sono da Manhã")
-        sono_tarde = col_s2.text_input("Sono da Tarde")
-        
-        st.subheader("4. Higiene")
-        col_h1, col_h2 = st.columns(2)
-        fraldas = col_h1.number_input("Fraldas (N.º)", min_value=0, max_value=10, value=0)
-        bacio = col_h2.number_input("Bacio (N.º)", min_value=0, max_value=10, value=0)
-        
-        st.subheader("5. Saúde")
-        saude_medicacao = st.text_area("Saúde / Medicação")
-        
-        st.subheader("6. Observações")
-        observacoes_rotina = st.text_area("Observações adicionais")
-        
-        st.subheader("7. Fotografias")
-        fotos_files = st.file_uploader("Anexar Fotografias", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True, key="fotos_rotinas_up")
-        
-        submit_cuidados = st.form_submit_button("💾 Guardar Registo de Rotinas")
-        
-        if submit_cuidados:
-            fotos_saved = []
-            if fotos_files:
-                pasta_fotos = os.path.join("uploads", "rotinas_fotos")
-                os.makedirs(pasta_fotos, exist_ok=True)
-                for foto in fotos_files:
-                    foto_path = os.path.join(pasta_fotos, f"{crianca.replace(' ', '_')}_{datetime.today().strftime('%Y%m%d_%H%M%S')}_{foto.name}")
-                    with open(foto_path, "wb") as f:
-                        f.write(foto.getbuffer())
-                    fotos_saved.append(foto_path)
-            fotos_str = ", ".join(fotos_saved)
+    if not criancas_disponiveis:
+        st.warning("Não existem crianças disponíveis para registo.")
+    else:
+        with st.form("form_cuidados"):
+            col1, col2 = st.columns(2)
+            data_registo = col1.date_input("Data do Registo", datetime.today())
+            crianca = col2.selectbox("Criança", criancas_disponiveis)
             
-            conn = get_db_connection()
-            c = conn.cursor()
-            try:
-                c.execute("ALTER TABLE registos_diarios ADD COLUMN IF NOT EXISTS observacoes TEXT")
-                c.execute("ALTER TABLE registos_diarios ADD COLUMN IF NOT EXISTS fotos_paths TEXT")
-            except Exception:
-                pass
+            # Atualização automática da Ama responsável pela criança selecionada
+            ama_automatica = get_ama_responsavel_crianca(crianca)
+            st.info(f"👩‍🍼 Ama Responsável Automática: **{ama_automatica}**")
+            
+            st.subheader("1. Bem-Estar")
+            bem_estar = st.radio("Estado Geral / Disposição:", ["Bem-disposto", "Sensível", "Agitado", "Doente"], horizontal=True)
+            
+            st.subheader("2. Alimentação")
+            col_a1, col_a2 = st.columns(2)
+            almoco = col_a1.radio("Almoço:", ["Bem", "Mal"], horizontal=True)
+            lanche = col_a2.radio("Lanche:", ["Bem", "Mal"], horizontal=True)
+            
+            st.subheader("3. Sono")
+            col_s1, col_s2 = st.columns(2)
+            sono_manha = col_s1.text_input("Sono da Manhã")
+            sono_tarde = col_s2.text_input("Sono da Tarde")
+            
+            st.subheader("4. Higiene")
+            col_h1, col_h2 = st.columns(2)
+            fraldas = col_h1.number_input("Fraldas (N.º)", min_value=0, max_value=10, value=0)
+            bacio = col_h2.number_input("Bacio (N.º)", min_value=0, max_value=10, value=0)
+            
+            st.subheader("5. Saúde")
+            saude_medicacao = st.text_area("Saúde / Medicação")
+            
+            st.subheader("6. Observações")
+            observacoes_rotina = st.text_area("Observações adicionais")
+            
+            st.subheader("7. Fotografias")
+            fotos_files = st.file_uploader("Anexar Fotografias", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True, key="fotos_rotinas_up")
+            
+            submit_cuidados = st.form_submit_button("💾 Guardar Registo de Rotinas")
+            
+            if submit_cuidados:
+                fotos_saved = []
+                if fotos_files:
+                    pasta_fotos = os.path.join("uploads", "rotinas_fotos")
+                    os.makedirs(pasta_fotos, exist_ok=True)
+                    for foto in fotos_files:
+                        foto_path = os.path.join(pasta_fotos, f"{crianca.replace(' ', '_')}_{datetime.today().strftime('%Y%m%d_%H%M%S')}_{foto.name}")
+                        with open(foto_path, "wb") as f:
+                            f.write(foto.getbuffer())
+                        fotos_saved.append(foto_path)
+                fotos_str = ", ".join(fotos_saved)
                 
-            c.execute('''INSERT INTO registos_diarios 
-                         (data, crianca, ama, bem_estar, almoco, lanche, sono_manha, sono_tarde, fraldas, bacio, saude_medicacao, observacoes, fotos_paths)
-                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''',
-                      (str(data_registo), crianca, ama, bem_estar, almoco, lanche, sono_manha, sono_tarde, fraldas, bacio, saude_medicacao, observacoes_rotina, fotos_str))
-            conn.commit()
-            c.close()
-            conn.close()
-            st.cache_data.clear()
-            st.success(f"Registo de rotinas de {crianca} guardado com sucesso!")
+                conn = get_db_connection()
+                c = conn.cursor()
+                try:
+                    c.execute("ALTER TABLE registos_diarios ADD COLUMN IF NOT EXISTS observacoes TEXT")
+                    c.execute("ALTER TABLE registos_diarios ADD COLUMN IF NOT EXISTS fotos_paths TEXT")
+                except Exception:
+                    pass
+                    
+                c.execute('''INSERT INTO registos_diarios 
+                             (data, crianca, ama, bem_estar, almoco, lanche, sono_manha, sono_tarde, fraldas, bacio, saude_medicacao, observacoes, fotos_paths)
+                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''',
+                          (str(data_registo), crianca, ama_automatica, bem_estar, almoco, lanche, sono_manha, sono_tarde, fraldas, bacio, saude_medicacao, observacoes_rotina, fotos_str))
+                conn.commit()
+                c.close()
+                conn.close()
+                st.cache_data.clear()
+                st.success(f"Registo de rotinas de {crianca} guardado com sucesso!")
 
 # ==========================================
 # 8. MÓDULO: ATIVIDADES E OCORRÊNCIAS
@@ -860,52 +885,55 @@ elif menu == "🎨 Atividades e Ocorrências":
     st.header("🎨 Atividades, Desenvolvimento e Ocorrências")
     
     ama_atual = st.session_state.nome_associado if st.session_state.role == "Ama" else None
-    criancas_disponiveis = get_criancas(ama_atual)
+    criancas_disponiveis = get_criancas(ama_filtro=ama_atual, role=st.session_state.get('role', ''), username=st.session_state.get('username', ''))
     
-    with st.form("form_atividades"):
-        col1, col2 = st.columns(2)
-        data_registo = col1.date_input("Data", datetime.today())
-        crianca = col2.selectbox("Criança", criancas_disponiveis if criancas_disponiveis else get_criancas())
-        
-        st.subheader("🧩 Atividades Sociopedagógicas")
-        atividades = st.text_area("Descrição das brincadeiras")
-        
-        st.subheader("📈 Marcos de Aprendizagem")
-        marcos = st.text_area("Novas conquistas")
-        
-        st.subheader("⚠️ Ocorrências / Incidentes")
-        ocorrencias = st.text_area("Ocorrências")
-        
-        st.subheader("📌 Observações")
-        observacoes = st.text_area("Observações")
-        
-        st.subheader("📸 Fotografias")
-        fotos_files = st.file_uploader("Anexar Fotografias", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
-        
-        submit_atividades = st.form_submit_button("💾 Guardar Atividades")
-        
-        if submit_atividades:
-            fotos_saved = []
-            if fotos_files:
-                pasta_fotos = os.path.join("uploads", "atividades_fotos")
-                os.makedirs(pasta_fotos, exist_ok=True)
-                for foto in fotos_files:
-                    foto_path = os.path.join(pasta_fotos, f"{crianca.replace(' ', '_')}_{datetime.today().strftime('%Y%m%d_%H%M%S')}_{foto.name}")
-                    with open(foto_path, "wb") as f:
-                        f.write(foto.getbuffer())
-                    fotos_saved.append(foto_path)
-            fotos_str = ", ".join(fotos_saved)
+    if not criancas_disponiveis:
+        st.warning("Não existem crianças disponíveis.")
+    else:
+        with st.form("form_atividades"):
+            col1, col2 = st.columns(2)
+            data_registo = col1.date_input("Data", datetime.today())
+            crianca = col2.selectbox("Criança", criancas_disponiveis)
             
-            conn = get_db_connection()
-            c = conn.cursor()
-            c.execute('''INSERT INTO atividades (data, crianca, atividades_sociopedagogicas, marcos_aprendizagem, ocorrencias, observacoes, fotos_paths)
-                         VALUES (%s, %s, %s, %s, %s, %s, %s)''',
-                      (str(data_registo), crianca, atividades, marcos, ocorrencias, observacoes, fotos_str))
-            conn.commit()
-            c.close()
-            conn.close()
-            st.cache_data.clear()
-            st.success(f"Atividades registadas para {crianca}.")
+            st.subheader("🧩 Atividades Sociopedagógicas")
+            atividades = st.text_area("Descrição das brincadeiras")
+            
+            st.subheader("📈 Marcos de Aprendizagem")
+            marcos = st.text_area("Novas conquistas")
+            
+            st.subheader("⚠️ Ocorrências / Incidentes")
+            ocorrencias = st.text_area("Ocorrências")
+            
+            st.subheader("📌 Observações")
+            observacoes = st.text_area("Observações")
+            
+            st.subheader("📸 Fotografias")
+            fotos_files = st.file_uploader("Anexar Fotografias", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
+            
+            submit_atividades = st.form_submit_button("💾 Guardar Atividades")
+            
+            if submit_atividades:
+                fotos_saved = []
+                if fotos_files:
+                    pasta_fotos = os.path.join("uploads", "atividades_fotos")
+                    os.makedirs(pasta_fotos, exist_ok=True)
+                    for foto in fotos_files:
+                        foto_path = os.path.join(pasta_fotos, f"{crianca.replace(' ', '_')}_{datetime.today().strftime('%Y%m%d_%H%M%S')}_{foto.name}")
+                        with open(foto_path, "wb") as f:
+                            f.write(foto.getbuffer())
+                        fotos_saved.append(foto_path)
+                fotos_str = ", ".join(fotos_saved)
+                
+                conn = get_db_connection()
+                c = conn.cursor()
+                c.execute('''INSERT INTO atividades (data, crianca, atividades_sociopedagogicas, marcos_aprendizagem, ocorrencias, observacoes, fotos_paths)
+                             VALUES (%s, %s, %s, %s, %s, %s, %s)''',
+                          (str(data_registo), crianca, atividades, marcos, ocorrencias, observacoes, fotos_str))
+                conn.commit()
+                c.close()
+                conn.close()
+                st.cache_data.clear()
+                st.success(f"Atividades registadas para {crianca}.")
 
 # ==========================================
 # 9. MÓDULO: ESPAÇO DOS PAIS
@@ -913,7 +941,7 @@ elif menu == "🎨 Atividades e Ocorrências":
 elif menu == "👨‍👩‍👧 Espaço dos Pais (Rotinas e Presenças)":
     st.header("👨‍👩‍👧 Espaço dos Pais - Acompanhamento Diário")
     
-    crianca_pai = st.session_state.nome_associado if st.session_state.role == "Pais" else st.selectbox("Selecione a Criança:", get_criancas())
+    crianca_pai = st.session_state.nome_associado if st.session_state.role == "Pais" else st.selectbox("Selecione a Criança:", get_criancas(role=st.session_state.get('role', ''), username=st.session_state.get('username', '')))
     
     st.markdown(f"---")
     st.subheader(f"📌 Informações do Educando: {crianca_pai}")
@@ -983,7 +1011,8 @@ elif menu == "📊 Relatórios e Impressão":
         crianca_rel = col_r1.selectbox("Selecionar Criança", get_criancas(), key="rel_crianca")
         tipo_relatorio = col_r2.selectbox("Tipo de Relatório", ["Diário", "Semanal", "Mensal"])
         data_rel = col_r3.date_input("Data de Referência", datetime.today(), key="rel_data")
-        ama_rel = st.selectbox("Ama Responsável", AMAS, key="rel_ama")
+        ama_rel = get_ama_responsavel_crianca(crianca_rel)
+        st.info(f"Ama Responsável Automática: **{ama_rel}**")
         
         if st.button("🔍 Gerar e Guardar Relatório Word", type="primary"):
             conn = get_db_connection()
@@ -1278,7 +1307,7 @@ elif menu == "💬 Mural de Recados":
             if tipo_destino == "Grupo de Ama Específica":
                 alvo_destino = st.selectbox("Selecionar Ama", AMAS)
             elif tipo_destino == "Individual (Criança / Pais)":
-                alvo_destino = st.selectbox("Selecionar Criança", get_criancas())
+                alvo_destino = st.selectbox("Selecionar Criança", get_criancas(ama_filtro=associado_atual if perfil_atual == "Ama" else None))
                 
             mensagem_texto = st.text_area("Mensagem / Recado")
             submit_recado = st.form_submit_button("📤 Publicar no Mural")
@@ -1340,7 +1369,7 @@ elif menu == "💬 Mural de Recados":
     if perfil_atual in ["Administrador", "Educadora"]:
         df_recados = pd.read_sql_query("SELECT * FROM recados ORDER BY id DESC", conn)
     elif perfil_atual == "Ama":
-        criancas_dela = get_criancas(associado_atual)
+        criancas_dela = get_criancas(ama_filtro=associado_atual)
         if criancas_dela:
             query = "SELECT * FROM recados WHERE privado = 0 AND (tipo_destino = 'Geral (Todos)' OR (tipo_destino = 'Grupo de Ama Específica' AND alvo_destino = %s) OR (tipo_destino = 'Individual (Criança / Pais)' AND alvo_destino = ANY(%s))) OR (privado = 1 AND alvo_destino = %s) ORDER BY id DESC"
             df_recados = pd.read_sql_query(query, conn, params=(associado_atual, list(criancas_dela), associado_atual))
