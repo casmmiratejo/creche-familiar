@@ -164,7 +164,6 @@ def init_db():
                     fotos_paths TEXT
                 )''')
     
-    # Garantir colunas em tabelas existentes caso já tenham sido criadas anteriormente sem elas
     c.execute("ALTER TABLE registos_diarios ADD COLUMN IF NOT EXISTS observacoes TEXT;")
     c.execute("ALTER TABLE registos_diarios ADD COLUMN IF NOT EXISTS fotos_paths TEXT;")
     
@@ -1163,11 +1162,11 @@ elif menu == "👩‍🏫 Painel da Educadora":
     
     conn = get_db_connection()
     if filtro_crianca == "Todas":
-        df_cuidados = pd.read_sql_query("SELECT data, crianca, ama, bem_estar, almoco, lanche, sono_manha, sono_tarde, fraldas, bacio, saude_medicacao FROM registos_diarios ORDER BY data DESC", conn)
+        df_cuidados = pd.read_sql_query("SELECT data, crianca, ama, bem_estar, almoco, lanche, sono_manha, sono_tarde, fraldas, bacio, saude_medicacao, observacoes FROM registos_diarios ORDER BY data DESC", conn)
         df_atividades = pd.read_sql_query("SELECT data, crianca, atividades_sociopedagogicas, marcos_aprendizagem, observacoes FROM atividades ORDER BY data DESC", conn)
         df_ocorrencias = pd.read_sql_query("SELECT data, crianca, ocorrencias FROM atividades WHERE ocorrencias != '' ORDER BY data DESC", conn)
     else:
-        df_cuidados = pd.read_sql_query("SELECT data, crianca, ama, bem_estar, almoco, lanche, sono_manha, sono_tarde, fraldas, bacio, saude_medicacao FROM registos_diarios WHERE crianca = %s ORDER BY data DESC", conn, params=(filtro_crianca,))
+        df_cuidados = pd.read_sql_query("SELECT data, crianca, ama, bem_estar, almoco, lanche, sono_manha, sono_tarde, fraldas, bacio, saude_medicacao, observacoes FROM registos_diarios WHERE crianca = %s ORDER BY data DESC", conn, params=(filtro_crianca,))
         df_atividades = pd.read_sql_query("SELECT data, crianca, atividades_sociopedagogicas, marcos_aprendizagem, observacoes FROM atividades WHERE crianca = %s ORDER BY data DESC", conn, params=(filtro_crianca,))
         df_ocorrencias = pd.read_sql_query("SELECT data, crianca, ocorrencias FROM atividades WHERE crianca = %s AND ocorrencias != '' ORDER BY data DESC", conn, params=(filtro_crianca,))
     conn.close()
