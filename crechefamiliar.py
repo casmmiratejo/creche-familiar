@@ -198,7 +198,6 @@ st.set_page_config(page_title="Gestão Creche Familiar", page_icon="🏡", layou
 def get_amas(*args, **kwargs):
     conn = get_db_connection()
     try:
-        # Verifica se foi pedido para incluir arquivadas
         incluir_arquivadas = kwargs.get('incluir_arquivadas', False)
         if len(args) > 0:
             incluir_arquivadas = args[0]
@@ -218,12 +217,10 @@ def get_amas(*args, **kwargs):
     
 AMAS = get_amas()
 
-
 @st.cache_data(ttl=60)
 def get_criancas(ama_filtro=None, incluir_arquivadas=False, role="", username=""):
     conn = get_db_connection()
     try:
-        # Consulta cirúrgica: traz APENAS o nome, ignorando fotos e PDFs pesados!
         if role == "Pais":
             if incluir_arquivadas:
                 df = pd.read_sql_query(
@@ -252,8 +249,6 @@ def get_criancas(ama_filtro=None, incluir_arquivadas=False, role="", username=""
     if df.empty:
         return []
     return df["nome_completo"].tolist()
-
-
 
 def gerar_qr_code(texto):
     qr = qrcode.QRCode(version=1, box_size=10, border=5)
@@ -369,13 +364,10 @@ if menu == "📱 Check-in QR Code (Entrada/Saída)":
         crianca_checkin = st.session_state.nome_associado
         st.info(f"👦 Educando associado: **{crianca_checkin}**")
     else:
-        # 1. Pede a lista filtrada para o utilizador atual
         lista_criancas = get_criancas(
             role=st.session_state.get('role', ''), 
             username=st.session_state.get('username', '')
         )
-
-# 2. Desenha o selectbox com essa lista
         crianca_checkin = st.selectbox("Selecione a Criança:", lista_criancas)
         
     st.markdown("---")
@@ -394,7 +386,6 @@ if menu == "📱 Check-in QR Code (Entrada/Saída)":
             
         detalhe_acomp = f"{acompanhante_tipo} ({nome_outro_acomp})" if nome_outro_acomp else acompanhante_tipo
 
-
     with col_ck2:
         st.subheader("2. Registo da Hora")
         data_hoje_str = datetime.today().strftime("%Y-%m-%d")
@@ -403,10 +394,8 @@ if menu == "📱 Check-in QR Code (Entrada/Saída)":
         st.write(f"📅 **Data:** {datetime.today().strftime('%d/%m/%Y')}")
         st.write(f"⏰ **Hora Atual:** {hora_atual_str}")
         
-        # Identificar quem está a fazer a validação na sessão
         quem_valida = f"{st.session_state.username} ({st.session_state.role})"
         
-        # 🔒 Restrição: Apenas Admin, Educadora ou Ama podem fazer o registo de presenças
         if st.session_state.role in ["Administrador", "Educadora", "Ama"]:
             c_btn1, c_btn2 = st.columns(2)
             
@@ -416,7 +405,6 @@ if menu == "📱 Check-in QR Code (Entrada/Saída)":
                 c.execute("SELECT id FROM assiduidade WHERE crianca = %s AND data = %s", (crianca_checkin, data_hoje_str))
                 registo_existente = c.fetchone()
                 
-                # Registo detalhado com quem entregou e quem validou no sistema
                 nota_entrada = f"Entregue por: {detalhe_acomp} | Validado por: {quem_valida}"
                 
                 if registo_existente:
@@ -456,15 +444,13 @@ if menu == "📱 Check-in QR Code (Entrada/Saída)":
     
     with col_ck3:
         st.subheader("3. QR Code de Acolhimento")
-        
-        # Substitua este link pelo URL público exato da sua app no Streamlit Cloud
-        url_base_app = "https://creche-familiar.streamlit.app"  # Exemplo de URL
-        
+        url_base_app = "https://creche-familiar.streamlit.app"
         texto_qr = f"{url_base_app}"
         img_qr_bytes = gerar_qr_code(texto_qr)
         st.image(img_qr_bytes, caption="Aponte a câmara para aceder à aplicação", width=160)
+
 # ==========================================
-# 5. MÓDULO: FICHA DA AMA (COM CONSULTA E ARQUIVAMENTO)
+# 5. MÓDULO: FICHA DA AMA
 # ==========================================
 elif menu == "👤 Ficha da Ama":
     st.header("👤 Ficha da Ama (Inscrição, Consulta e Arquivamento)")
@@ -524,7 +510,6 @@ elif menu == "👤 Ficha da Ama":
 
             submit_ama = st.form_submit_button("💾 Guardar Ficha da Ama")
 
-        # 👉 O IF FICA FORA DO WITH ST.FORM (alinhado com o 'with st.form')
         if submit_ama:
             if nome_completo:
                 coabitantes_str = " | ".join(coabitantes_linhas)
@@ -562,14 +547,12 @@ elif menu == "👤 Ficha da Ama":
                 reg_ama = df_detalhe_ama.iloc[0]
                 status_arq = "🔴 Arquivada" if reg_ama['arquivada'] == 1 else "🟢 Ativa"
                 
-                # Cabeçalho limpo com o estado
                 col_h1, col_h2 = st.columns([3, 1])
                 col_h1.markdown(f"### Ficha de: **{reg_ama['nome_completo']}**")
                 col_h2.markdown(f"**Estado:** {status_arq}")
                 
                 st.markdown("---")
                 
-                # Exibição organizada por secções
                 col_d1, col_d2 = st.columns(2)
                 with col_d1:
                     st.markdown("#### 📋 Dados Institucionais e Pessoais")
@@ -622,7 +605,7 @@ elif menu == "👤 Ficha da Ama":
             st.info("Ainda não existem amas registadas.")
 
 # ==========================================
-# 6. MÓDULO: FICHA DA CRIANÇA (COM CONSULTA E ARQUIVAMENTO)
+# 6. MÓDULO: FICHA DA CRIANÇA
 # ==========================================
 elif menu == "📄 Ficha da Criança":
     st.header("📄 Ficha da Criança (Inscrição, Consulta e Arquivamento)")
@@ -669,16 +652,13 @@ elif menu == "📄 Ficha da Criança":
 
             submit_crianca = st.form_submit_button("💾 Guardar Ficha da Criança")
 
-        # 👉 O IF FICA FORA DO WITH ST.FORM (alinhado com o 'with st.form')
         if submit_crianca:
             if nome_completo:
-                # Conversão da Fotografia para Base64
                 foto_b64 = ""
                 if foto_file is not None:
                     foto_bytes = foto_file.read()
                     foto_b64 = base64.b64encode(foto_bytes).decode('utf-8')
 
-                # Conversão dos Documentos Anexos para Base64
                 docs_saved = []
                 if docs_files:
                     for doc in docs_files:
@@ -707,7 +687,6 @@ elif menu == "📄 Ficha da Criança":
     with aba_cri_2:
         st.subheader("🔍 Consultar e Gerir Fichas de Crianças")
         
-        # Atualizado para passar o role e o username de forma segura
         todas_criancas = get_criancas(
             incluir_arquivadas=True, 
             role=st.session_state.get('role', ''), 
@@ -716,7 +695,6 @@ elif menu == "📄 Ficha da Criança":
         
         if todas_criancas:
             crianca_selecionada = st.selectbox("Selecione a Criança para consultar:", todas_criancas, key="sel_cons_cri")
-            # ... resto do código ...
             conn = get_db_connection()
             df_detalhe_cri = pd.read_sql_query("SELECT * FROM ficha_crianca WHERE nome_completo = %s", conn, params=(crianca_selecionada,))
             conn.close()
@@ -725,17 +703,14 @@ elif menu == "📄 Ficha da Criança":
                 reg_cri = df_detalhe_cri.iloc[0]
                 status_arq_c = "🔴 Arquivada" if reg_cri['arquivada'] == 1 else "🟢 Ativa"
                 
-                # Cabeçalho limpo com o estado
                 col_hc1, col_hc2 = st.columns([3, 1])
                 col_hc1.markdown(f"### Ficha do Educando: **{reg_cri['nome_completo']}**")
                 col_hc2.markdown(f"**Estado:** {status_arq_c}")
                 
                 st.markdown("---")
                 
-                # Exibição organizada por colunas
                 col_dc1, col_dc2 = st.columns(2)
                 with col_dc1:
-                    # Exibir Fotografia se existir
                     if reg_cri.get('foto_path') and len(reg_cri['foto_path']) > 50:
                         try:
                             foto_bytes_dec = base64.b64decode(reg_cri['foto_path'])
@@ -762,7 +737,6 @@ elif menu == "📄 Ficha da Criança":
                     st.write(f"**Nome da Mãe:** {reg_cri['mae_nome']}")
                     st.write(f"**Telemóvel da Mãe:** {reg_cri['mae_telemovel']}")
 
-                    # Exibir Documentos Anexos se existirem
                     if reg_cri.get('docs_paths') and len(reg_cri['docs_paths']) > 5:
                         st.markdown("#### 📁 Documentos Anexos")
                         docs_list = reg_cri['docs_paths'].split("||")
@@ -819,7 +793,7 @@ elif menu == "📝 Rotinas e Cuidados Diários (Ama)":
     with st.form("form_cuidados"):
         col1, col2, col3 = st.columns(3)
         data_registo = col1.date_input("Data do Registo", datetime.today())
-        crianca = col2.selectbox("Criança", criancas_disponiveis if criancas_disponiveis else CRIANCAS)
+        crianca = col2.selectbox("Criança", criancas_disponiveis if criancas_disponiveis else get_criancas())
         ama = col3.selectbox("Ama Responsável", AMAS, index=AMAS.index(ama_atual) if ama_atual in AMAS else 0)
         
         st.subheader("1. Bem-Estar")
@@ -871,7 +845,7 @@ elif menu == "🎨 Atividades e Ocorrências":
     with st.form("form_atividades"):
         col1, col2 = st.columns(2)
         data_registo = col1.date_input("Data", datetime.today())
-        crianca = col2.selectbox("Criança", criancas_disponiveis if criancas_disponiveis else CRIANCAS)
+        crianca = col2.selectbox("Criança", criancas_disponiveis if criancas_disponiveis else get_criancas())
         
         st.subheader("🧩 Atividades Sociopedagógicas")
         atividades = st.text_area("Descrição das brincadeiras")
@@ -914,7 +888,7 @@ elif menu == "🎨 Atividades e Ocorrências":
             st.success(f"Atividades registadas para {crianca}.")
 
 # ==========================================
-# 9. MÓDULO: SECRETARIA E ASSIDUIDADE (EXCEL BONITO)
+# 9. MÓDULO: SECRETARIA E ASSIDUIDADE
 # ==========================================
 elif menu == "🕒 Secretaria e Assiduidade":
     st.header("🕒 Controlo de Frequência e Presenças")
@@ -925,7 +899,7 @@ elif menu == "🕒 Secretaria e Assiduidade":
     with st.form("form_assiduidade"):
         col1, col2 = st.columns(2)
         data_registo = col1.date_input("Data", datetime.today())
-        crianca = col2.selectbox("Criança", criancas_disponiveis if criancas_disponiveis else CRIANCAS)
+        crianca = col2.selectbox("Criança", criancas_disponiveis if criancas_disponiveis else get_criancas())
         
         col3, col4 = st.columns(2)
         hora_entrada = col3.time_input("Hora de Entrada")
@@ -951,7 +925,7 @@ elif menu == "🕒 Secretaria e Assiduidade":
     st.subheader("📥 Exportar Mapa de Presenças Mensal em Excel (.xlsx)")
     
     col_ex1, col_ex2, col_ex3 = st.columns(3)
-    crianca_excel = col_ex1.selectbox("Criança para o Mapa", criancas_disponiveis if criancas_disponiveis else CRIANCAS, key="excel_crianca")
+    crianca_excel = col_ex1.selectbox("Criança para o Mapa", criancas_disponiveis if criancas_disponiveis else get_criancas(), key="excel_crianca")
     ama_excel = col_ex2.selectbox("Ama Responsável", AMAS if AMAS else ["Geral"])
     
     meses_dict = {
@@ -979,7 +953,6 @@ elif menu == "🕒 Secretaria e Assiduidade":
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 df_assiduidade.to_excel(writer, index=False, sheet_name='Presenças')
                 
-                # Formatação bonita com openpyxl (cabeçalho azul, texto branco, larguras ajustadas)
                 workbook = writer.book
                 worksheet = writer.sheets['Presenças']
                 
@@ -995,7 +968,6 @@ elif menu == "🕒 Secretaria e Assiduidade":
                     cell.font = header_font
                     cell.alignment = align_center
                 
-                # Ajuste automático das colunas
                 for col in worksheet.columns:
                     max_len = max(len(str(cell.value or '')) for cell in col)
                     col_letter = col[0].column_letter
@@ -1016,7 +988,7 @@ elif menu == "🕒 Secretaria e Assiduidade":
 elif menu == "👨‍👩‍👧 Espaço dos Pais (Rotinas e Presenças)":
     st.header("👨‍👩‍👧 Espaço dos Pais - Acompanhamento Diário")
     
-    crianca_pai = st.session_state.nome_associado if st.session_state.role == "Pais" else st.selectbox("Selecione a Criança:", CRIANCAS)
+    crianca_pai = st.session_state.nome_associado if st.session_state.role == "Pais" else st.selectbox("Selecione a Criança:", get_criancas())
     
     st.markdown(f"---")
     st.subheader(f"📌 Informações do Educando: {crianca_pai}")
@@ -1080,7 +1052,7 @@ elif menu == "📊 Relatórios e Impressão":
     st.header("📊 Relatórios de Atividades e Desenvolvimento")
     
     col_r1, col_r2, col_r3 = st.columns(3)
-    crianca_rel = col_r1.selectbox("Selecionar Criança", CRIANCAS, key="rel_crianca")
+    crianca_rel = col_r1.selectbox("Selecionar Criança", get_criancas(), key="rel_crianca")
     tipo_relatorio = col_r2.selectbox("Tipo de Relatório", ["Diário", "Semanal", "Mensal"])
     data_rel = col_r3.date_input("Data de Referência", datetime.today(), key="rel_data")
     ama_rel = st.selectbox("Ama Responsável", AMAS, key="rel_ama")
@@ -1159,7 +1131,7 @@ elif menu == "📊 Relatórios e Impressão":
 elif menu == "👩‍🏫 Supervisão (Educadora)":
     st.header("👩‍🏫 Painel da Educadora de Infância")
     
-    filtro_crianca = st.selectbox("Filtrar por Criança:", ["Todas"] + CRIANCAS)
+    filtro_crianca = st.selectbox("Filtrar por Criança:", ["Todas"] + get_criancas())
     tab1, tab2, tab3 = st.tabs(["📋 Rotinas Diárias", "🎨 Atividades e Marcos", "⚠️ Ocorrências"])
     
     conn = get_db_connection()
@@ -1285,7 +1257,7 @@ elif menu == "👥 Gestão de Utilizadores":
     st.dataframe(df_users, use_container_width=True)
 
 # ==========================================
-# 14. MÓDULO: MURAL DE RECADOS E COMUNICAÇÃO (SEM DUPLICADOS)
+# 14. MÓDULO: MURAL DE RECADOS E COMUNICAÇÃO
 # ==========================================
 elif menu == "💬 Mural de Recados":
     st.header("💬 Mural de Recados e Comunicação")
@@ -1303,7 +1275,7 @@ elif menu == "💬 Mural de Recados":
             if tipo_destino == "Grupo de Ama Específica":
                 alvo_destino = st.selectbox("Selecionar Ama", AMAS)
             elif tipo_destino == "Individual (Criança / Pais)":
-                alvo_destino = st.selectbox("Selecionar Criança", CRIANCAS)
+                alvo_destino = st.selectbox("Selecionar Criança", get_criancas())
                 
             mensagem_texto = st.text_area("Mensagem / Recado")
             submit_recado = st.form_submit_button("📤 Publicar no Mural")
@@ -1381,7 +1353,6 @@ elif menu == "💬 Mural de Recados":
     
     conn.close()
 
-    # 👉 ADICIONE ESTA LINHA PARA FILTRAR QUALQUER DUPLICADO VISUALMENTE
     if not df_recados.empty:
         df_recados = df_recados.drop_duplicates(subset=['mensagem', 'remetente', 'data_hora'])
         
