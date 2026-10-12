@@ -781,7 +781,7 @@ elif menu == "📄 Ficha da Criança":
         else:
             st.info("Ainda não existem crianças registadas.")
 
-# ==========================================
+# # ==========================================
 # 7. MÓDULO: ROTINAS E CUIDADOS DIÁRIOS (AMA)
 # ==========================================
 elif menu == "📝 Rotinas e Cuidados Diários (Ama)":
@@ -814,19 +814,45 @@ elif menu == "📝 Rotinas e Cuidados Diários (Ama)":
         fraldas = col_h1.number_input("Fraldas (N.º)", min_value=0, max_value=10, value=0)
         bacio = col_h2.number_input("Bacio (N.º)", min_value=0, max_value=10, value=0)
         
-        st.subheader("5. Saúde e Recados")
+        st.subheader("5. Saúde")
         saude_medicacao = st.text_area("Saúde / Medicação")
-        recados = st.text_input("Recados para os Pais")
+        
+        st.subheader("6. Observações")
+        observacoes_rotina = st.text_area("Observações adicionais")
+        
+        st.subheader("7. Fotografias")
+        fotos_files = st.file_uploader("Anexar Fotografias", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True, key="fotos_rotinas_up")
         
         submit_cuidados = st.form_submit_button("💾 Guardar Registo de Rotinas")
         
         if submit_cuidados:
+            fotos_saved = []
+            if fotos_files:
+                pasta_fotos = os.path.join("uploads", "rotinas_fotos")
+                os.makedirs(pasta_fotos, exist_ok=True)
+                for foto in fotos_files:
+                    foto_path = os.path.join(pasta_fotos, f"{crianca.replace(' ', '_')}_{datetime.today().strftime('%Y%m%d_%H%M%S')}_{foto.name}")
+                    with open(foto_path, "wb") as f:
+                        f.write(foto.getbuffer())
+                    fotos_saved.append(foto_path)
+            fotos_str = ", ".join(fotos_saved)
+            
+            # Nota: Se preferir guardar a tabela com os novos campos de observações e fotos, 
+            # certifique-se de que a tabela 'registos_diarios' aceita essas colunas na base de dados.
             conn = get_db_connection()
             c = conn.cursor()
+            
+            # Garantir compatibilidade caso as colunas novas ainda não existam na BD
+            try:
+                c.execute("ALTER TABLE registos_diarios ADD COLUMN IF NOT EXISTS observacoes TEXT")
+                c.execute("ALTER TABLE registos_diarios ADD COLUMN IF NOT EXISTS fotos_paths TEXT")
+            except Exception:
+                pass
+                
             c.execute('''INSERT INTO registos_diarios 
-                         (data, crianca, ama, bem_estar, almoco, lanche, sono_manha, sono_tarde, fraldas, bacio, saude_medicacao, recados)
-                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''',
-                      (str(data_registo), crianca, ama, bem_estar, almoco, lanche, sono_manha, sono_tarde, fraldas, bacio, saude_medicacao, recados))
+                         (data, crianca, ama, bem_estar, almoco, lanche, sono_manha, sono_tarde, fraldas, bacio, saude_medicacao, observacoes, fotos_paths)
+                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''',
+                      (str(data_registo), crianca, ama, bem_estar, almoco, lanche, sono_manha, sono_tarde, fraldas, bacio, saude_medicacao, observacoes_rotina, fotos_str))
             conn.commit()
             c.close()
             conn.close()
