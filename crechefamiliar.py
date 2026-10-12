@@ -323,8 +323,8 @@ if st.session_state.role == "Administrador":
         "🎨 Atividades e Ocorrências", 
         "📊 Relatórios e Impressão",
         "👩‍🏫 Supervisão (Educadora)",
-        "💬 Mural de Recados",
-        "👥 Gestão de Utilizadores"
+        "👥 Gestão de Utilizadores",
+        "💬 Mural de Recados"
     ])
 elif st.session_state.role == "Educadora":
     menu = st.sidebar.radio("Menu (Educadora):", [
@@ -335,16 +335,18 @@ elif st.session_state.role == "Educadora":
         "🎨 Atividades e Ocorrências", 
         "📊 Relatórios e Impressão",
         "👩‍🏫 Supervisão (Educadora)",
+        "👥 Gestão de Utilizadores",
         "💬 Mural de Recados"
     ])
 elif st.session_state.role == "Ama":
+    # Ama vê apenas: Check-in, Rotinas e Mural de Recados
     menu = st.sidebar.radio("Menu (Ama):", [
         "📱 Check-in QR Code (Entrada/Saída)",
-        "📝 Rotinas e Cuidados Diários (Ama)", 
-        "🎨 Atividades e Ocorrências", 
+        "📝 Rotinas e Cuidados Diários (Ama)",
         "💬 Mural de Recados"
     ])
 else: # Pais
+    # Pais veem apenas: Check-in, Espaço dos Pais e Mural de Recados
     menu = st.sidebar.radio("Menu (Pais):", [
         "📱 Check-in QR Code (Entrada/Saída)",
         "👨‍👩‍👧 Espaço dos Pais (Rotinas e Presenças)",
@@ -1153,7 +1155,7 @@ elif menu == "👩‍🏫 Supervisão (Educadora)":
 # ==========================================
 elif menu == "👥 Gestão de Utilizadores":
     st.header("👥 Gestão de Utilizadores e Contas de Acesso")
-    st.caption("Acesso reservado ao Administrador para criação de contas, redefinição de passwords e gestão de perfis.")
+    st.caption("Criação de contas, redefinição de passwords e gestão de perfis.")
     
     tab_u1, tab_u2, tab_u3 = st.tabs(["➕ Criar Utilizador", "🔑 Redefinir Palavra-passe", "🗑️ Eliminar Utilizador"])
     
@@ -1164,7 +1166,10 @@ elif menu == "👥 Gestão de Utilizadores":
         novo_password = col_u2.text_input("Palavra-passe (Password)", type="password", key="novo_pass")
         
         col_u3, col_u4 = st.columns(2)
-        novo_role = col_u3.selectbox("Perfil de Utilizador", ["Educadora", "Ama", "Pais", "Administrador"], key="novo_role_sel")
+        
+        # A Educadora não pode criar contas de Administrador
+        perfis_permitidos = ["Educadora", "Ama", "Pais", "Administrador"] if st.session_state.role == "Administrador" else ["Educadora", "Ama", "Pais"]
+        novo_role = col_u3.selectbox("Perfil de Utilizador", perfis_permitidos, key="novo_role_sel")
         
         if novo_role == "Ama":
             amas_list = get_amas()
@@ -1196,7 +1201,10 @@ elif menu == "👥 Gestão de Utilizadores":
     with tab_u2:
         st.subheader("🔑 Alterar / Redefinir Palavra-passe")
         conn = get_db_connection()
-        df_users_reset = pd.read_sql_query("SELECT username, role FROM utilizadores WHERE username != 'admin'", conn)
+        if st.session_state.role == "Administrador":
+            df_users_reset = pd.read_sql_query("SELECT username, role FROM utilizadores", conn)
+        else:
+            df_users_reset = pd.read_sql_query("SELECT username, role FROM utilizadores WHERE username != 'admin'", conn)
         conn.close()
         
         if not df_users_reset.empty:
@@ -1222,24 +1230,30 @@ elif menu == "👥 Gestão de Utilizadores":
     with tab_u3:
         st.subheader("🗑️ Eliminar Utilizador")
         conn = get_db_connection()
-        df_users_del = pd.read_sql_query("SELECT username FROM utilizadores WHERE role != 'Administrador' AND username != 'admin'", conn)
+        if st.session_state.role == "Administrador":
+            df_users_del = pd.read_sql_query("SELECT username FROM utilizadores WHERE username != 'admin'", conn)
+        else:
+            df_users_del = pd.read_sql_query("SELECT username FROM utilizadores WHERE role != 'Administrador' AND username != 'admin'", conn)
         conn.close()
         user_list_del = df_users_del['username'].tolist() if not df_users_del.empty else []
         
         if user_list_del:
             user_to_delete = st.selectbox("Selecione o utilizador a eliminar", user_list_del, key="del_user_sel")
             if st.button("Eliminar Utilizador Selecionado", type="secondary"):
-                conn = get_db_connection()
-                c = conn.cursor()
-                c.execute("DELETE FROM utilizadores WHERE username = %s", (user_to_delete,))
-                conn.commit()
-                c.close()
-                conn.close()
-                st.cache_data.clear()
-                st.success(f"Utilizador `{user_to_delete}` eliminado com sucesso!")
-                st.rerun()
+                if user_to_delete == "admin" and st.session_state.role != "Administrador":
+                    st.error("Ação não permitida: Não pode eliminar a conta do Administrador.")
+                else:
+                    conn = get_db_connection()
+                    c = conn.cursor()
+                    c.execute("DELETE FROM utilizadores WHERE username = %s", (user_to_delete,))
+                    conn.commit()
+                    c.close()
+                    conn.close()
+                    st.cache_data.clear()
+                    st.success(f"Utilizador `{user_to_delete}` eliminado com sucesso!")
+                    st.rerun()
         else:
-            st.info("Não existem utilizadores secundários disponíveis para eliminação.")
+            st.info("Não existem utilizadores disponíveis para eliminação.")
                 
     st.divider()
     st.subheader("Utilizadores Registados no Sistema")
