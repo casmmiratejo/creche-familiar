@@ -158,7 +158,8 @@ def init_db():
                     fraldas INTEGER,
                     bacio INTEGER,
                     saude_medicacao TEXT,
-                    recados TEXT
+                    observacoes TEXT,
+                    fotos_paths TEXT
                 )''')
     
     # Tabela de Atividades, Ocorrências e Fotos
@@ -173,7 +174,7 @@ def init_db():
                     fotos_paths TEXT
                 )''')
     
-    # Tabela de Assiduidade e Presenças (Secretaria)
+    # Tabela de Assiduidade e Presenças (Check-in)
     c.execute('''CREATE TABLE IF NOT EXISTS assiduidade (
                     id SERIAL PRIMARY KEY,
                     data TEXT,
@@ -320,7 +321,6 @@ if st.session_state.role == "Administrador":
         "📄 Ficha da Criança",
         "📝 Rotinas e Cuidados Diários (Ama)", 
         "🎨 Atividades e Ocorrências", 
-        "🕒 Secretaria e Assiduidade",
         "📊 Relatórios e Impressão",
         "👩‍🏫 Supervisão (Educadora)",
         "💬 Mural de Recados",
@@ -333,7 +333,6 @@ elif st.session_state.role == "Educadora":
         "📄 Ficha da Criança",
         "📝 Rotinas e Cuidados Diários (Ama)", 
         "🎨 Atividades e Ocorrências", 
-        "🕒 Secretaria e Assiduidade",
         "📊 Relatórios e Impressão",
         "👩‍🏫 Supervisão (Educadora)",
         "💬 Mural de Recados"
@@ -343,7 +342,6 @@ elif st.session_state.role == "Ama":
         "📱 Check-in QR Code (Entrada/Saída)",
         "📝 Rotinas e Cuidados Diários (Ama)", 
         "🎨 Atividades e Ocorrências", 
-        "🕒 Secretaria e Assiduidade",
         "💬 Mural de Recados"
     ])
 else: # Pais
@@ -781,7 +779,7 @@ elif menu == "📄 Ficha da Criança":
         else:
             st.info("Ainda não existem crianças registadas.")
 
-# # ==========================================
+# ==========================================
 # 7. MÓDULO: ROTINAS E CUIDADOS DIÁRIOS (AMA)
 # ==========================================
 elif menu == "📝 Rotinas e Cuidados Diários (Ama)":
@@ -837,12 +835,8 @@ elif menu == "📝 Rotinas e Cuidados Diários (Ama)":
                     fotos_saved.append(foto_path)
             fotos_str = ", ".join(fotos_saved)
             
-            # Nota: Se preferir guardar a tabela com os novos campos de observações e fotos, 
-            # certifique-se de que a tabela 'registos_diarios' aceita essas colunas na base de dados.
             conn = get_db_connection()
             c = conn.cursor()
-            
-            # Garantir compatibilidade caso as colunas novas ainda não existam na BD
             try:
                 c.execute("ALTER TABLE registos_diarios ADD COLUMN IF NOT EXISTS observacoes TEXT")
                 c.execute("ALTER TABLE registos_diarios ADD COLUMN IF NOT EXISTS fotos_paths TEXT")
@@ -914,102 +908,7 @@ elif menu == "🎨 Atividades e Ocorrências":
             st.success(f"Atividades registadas para {crianca}.")
 
 # ==========================================
-# 9. MÓDULO: SECRETARIA E ASSIDUIDADE
-# ==========================================
-elif menu == "🕒 Secretaria e Assiduidade":
-    st.header("🕒 Controlo de Frequência e Presenças")
-    
-    ama_atual = st.session_state.nome_associado if st.session_state.role == "Ama" else None
-    criancas_disponiveis = get_criancas(ama_atual)
-    
-    with st.form("form_assiduidade"):
-        col1, col2 = st.columns(2)
-        data_registo = col1.date_input("Data", datetime.today())
-        crianca = col2.selectbox("Criança", criancas_disponiveis if criancas_disponiveis else get_criancas())
-        
-        col3, col4 = st.columns(2)
-        hora_entrada = col3.time_input("Hora de Entrada")
-        hora_saida = col4.time_input("Hora de Saída", value=None)
-        
-        notas_assiduidade = st.text_input("Notas (ex: entregue pelo irmão)")
-        
-        submit_assiduidade = st.form_submit_button("💾 Registar Presença Manual")
-        
-        if submit_assiduidade:
-            conn = get_db_connection()
-            c = conn.cursor()
-            c.execute('''INSERT INTO assiduidade (data, crianca, hora_entrada, hora_saida, notas)
-                         VALUES (%s, %s, %s, %s, %s)''',
-                      (str(data_registo), crianca, str(hora_entrada), str(hora_saida) if hora_saida else "", notas_assiduidade))
-            conn.commit()
-            c.close()
-            conn.close()
-            st.cache_data.clear()
-            st.success("Registo de presença guardado com sucesso!")
-            
-    st.divider()
-    st.subheader("📥 Exportar Mapa de Presenças Mensal em Excel (.xlsx)")
-    
-    col_ex1, col_ex2, col_ex3 = st.columns(3)
-    crianca_excel = col_ex1.selectbox("Criança para o Mapa", criancas_disponiveis if criancas_disponiveis else get_criancas(), key="excel_crianca")
-    ama_excel = col_ex2.selectbox("Ama Responsável", AMAS if AMAS else ["Geral"])
-    
-    meses_dict = {
-        "Janeiro": "01", "Fevereiro": "02", "Março": "03", "Abril": "04",
-        "Maio": "05", "Junho": "06", "Julho": "07", "Agosto": "08",
-        "Setembro": "09", "Outubro": "10", "Novembro": "11", "Dezembro": "12"
-    }
-    col_m1, col_m2 = col_ex3.columns(2)
-    mes_nome = col_m1.selectbox("Mês", list(meses_dict.keys()), index=datetime.today().month - 1)
-    ano_sel = col_m2.number_input("Ano", min_value=2024, max_value=2030, value=datetime.today().year)
-    
-    mes_num = meses_dict[mes_nome]
-    ano_mes_str = f"{ano_sel}-{mes_num}"
-    
-    if st.button("📊 Gerar Excel do Mês Selecionado", type="primary"):
-        conn = get_db_connection()
-        query_excel = "SELECT data, hora_entrada, hora_saida, notas FROM assiduidade WHERE crianca = %s AND data LIKE %s ORDER BY data ASC"
-        df_assiduidade = pd.read_sql_query(query_excel, conn, params=(crianca_excel, f"{ano_mes_str}%"))
-        conn.close()
-        
-        if df_assiduidade.empty:
-            st.warning(f"Não existem registos para {crianca_excel} em {mes_nome} de {ano_sel}.")
-        else:
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df_assiduidade.to_excel(writer, index=False, sheet_name='Presenças')
-                
-                workbook = writer.book
-                worksheet = writer.sheets['Presenças']
-                
-                from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-                
-                header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-                header_font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
-                align_center = Alignment(horizontal="center", vertical="center")
-                
-                for col_num in range(1, len(df_assiduidade.columns) + 1):
-                    cell = worksheet.cell(row=1, column=col_num)
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.alignment = align_center
-                
-                for col in worksheet.columns:
-                    max_len = max(len(str(cell.value or '')) for cell in col)
-                    col_letter = col[0].column_letter
-                    worksheet.column_dimensions[col_letter].width = max(max_len + 4, 15)
-
-            excel_data = output.getvalue()
-            st.download_button(
-                label=f"📥 Descarregar Mapa Formatado ({mes_nome} {ano_sel}) (.xlsx)",
-                data=excel_data,
-                file_name=f"Mapa_Presencas_{crianca_excel.replace(' ', '_')}_{ano_sel}_{mes_num}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary"
-            )
-
-# ==========================================
-# 10. MÓDULO: ESPAÇO DOS PAIS
+# 9. MÓDULO: ESPAÇO DOS PAIS
 # ==========================================
 elif menu == "👨‍👩‍👧 Espaço dos Pais (Rotinas e Presenças)":
     st.header("👨‍👩‍👧 Espaço dos Pais - Acompanhamento Diário")
@@ -1034,7 +933,7 @@ elif menu == "👨‍👩‍👧 Espaço dos Pais (Rotinas e Presenças)":
     with tab_p2:
         st.markdown("### Rotinas Diárias")
         conn = get_db_connection()
-        df_pais_rot = pd.read_sql_query("SELECT data, ama, bem_estar, almoco, lanche, sono_manha, sono_tarde, fraldas, bacio, saude_medicacao, recados FROM registos_diarios WHERE crianca = %s ORDER BY data DESC", conn, params=(crianca_pai,))
+        df_pais_rot = pd.read_sql_query("SELECT data, ama, bem_estar, almoco, lanche, sono_manha, sono_tarde, fraldas, bacio, saude_medicacao, observacoes FROM registos_diarios WHERE crianca = %s ORDER BY data DESC", conn, params=(crianca_pai,))
         conn.close()
         if df_pais_rot.empty:
             st.info("Ainda sem registos de rotinas diárias.")
@@ -1046,9 +945,9 @@ elif menu == "👨‍👩‍👧 Espaço dos Pais (Rotinas e Presenças)":
                     st.write(f"**Sono:** Manhã: {row['sono_manha']} | Tarde: {row['sono_tarde']}")
                     st.write(f"**Higiene:** Fraldas: {row['fraldas']} | Bacio: {row['bacio']}")
                     if row['saude_medicacao']:
-                        st.warning(f"**Medicação:** {row['saude_medicacao']}")
-                    if row['recados']:
-                        st.info(f"**Recados:** {row['recados']}")
+                        st.warning(f"**Saúde:** {row['saude_medicacao']}")
+                    if row['observacoes']:
+                        st.info(f"**Observações:** {row['observacoes']}")
                             
     with tab_p3:
         st.markdown("### Atividades e Fotografias")
@@ -1072,87 +971,154 @@ elif menu == "👨‍👩‍👧 Espaço dos Pais (Rotinas e Presenças)":
                 st.markdown("---")
 
 # ==========================================
-# 11. MÓDULO: RELATÓRIOS E IMPRESSÃO
+# 10. MÓDULO: RELATÓRIOS E IMPRESSÃO
 # ==========================================
 elif menu == "📊 Relatórios e Impressão":
-    st.header("📊 Relatórios de Atividades e Desenvolvimento")
+    st.header("📊 Relatórios de Atividades e Mapa de Presenças")
     
-    col_r1, col_r2, col_r3 = st.columns(3)
-    crianca_rel = col_r1.selectbox("Selecionar Criança", get_criancas(), key="rel_crianca")
-    tipo_relatorio = col_r2.selectbox("Tipo de Relatório", ["Diário", "Semanal", "Mensal"])
-    data_rel = col_r3.date_input("Data de Referência", datetime.today(), key="rel_data")
-    ama_rel = st.selectbox("Ama Responsável", AMAS, key="rel_ama")
+    aba_rel_1, aba_rel_2 = st.tabs(["📑 Relatório de Atividades (Word)", "🕒 Mapa de Presenças Mensal (Excel)"])
     
-    if st.button("🔍 Gerar e Guardar Relatório", type="primary"):
+    with aba_rel_1:
+        col_r1, col_r2, col_r3 = st.columns(3)
+        crianca_rel = col_r1.selectbox("Selecionar Criança", get_criancas(), key="rel_crianca")
+        tipo_relatorio = col_r2.selectbox("Tipo de Relatório", ["Diário", "Semanal", "Mensal"])
+        data_rel = col_r3.date_input("Data de Referência", datetime.today(), key="rel_data")
+        ama_rel = st.selectbox("Ama Responsável", AMAS, key="rel_ama")
+        
+        if st.button("🔍 Gerar e Guardar Relatório Word", type="primary"):
+            conn = get_db_connection()
+            if tipo_relatorio == "Diário":
+                data_str = str(data_rel)
+                df_ativ = pd.read_sql_query("SELECT * FROM atividades WHERE crianca = %s AND data = %s", conn, params=(crianca_rel, data_str))
+                periodo_txt = f"Dia: {data_rel.strftime('%d/%m/%Y')}"
+            elif tipo_relatorio == "Semanal":
+                inicio_semana = data_rel - timedelta(days=data_rel.weekday())
+                fim_semana = inicio_semana + timedelta(days=6)
+                df_ativ = pd.read_sql_query("SELECT * FROM atividades WHERE crianca = %s AND data BETWEEN %s AND %s ORDER BY data DESC", conn, params=(crianca_rel, str(inicio_semana), str(fim_semana)))
+                periodo_txt = f"Semana de {inicio_semana.strftime('%d/%m/%Y')} a {fim_semana.strftime('%d/%m/%Y')}"
+            else:
+                ano_mes = data_rel.strftime('%Y-%m')
+                df_ativ = pd.read_sql_query("SELECT * FROM atividades WHERE crianca = %s AND data LIKE %s ORDER BY data DESC", conn, params=(crianca_rel, f"{ano_mes}%"))
+                periodo_txt = f"Mês: {data_rel.strftime('%B de %Y')}"
+            conn.close()
+                
+            if df_ativ.empty:
+                st.info("Não existem registos de atividades para o período selecionado.")
+            else:
+                doc = Document()
+                p_title = doc.add_paragraph()
+                r_title = p_title.add_run("RELATÓRIO DE ATIVIDADES E DESENVOLVIMENTO")
+                r_title.font.name = 'Arial'
+                r_title.font.size = Pt(14)
+                r_title.font.bold = True
+                r_title.font.color.rgb = RGBColor(31, 78, 121)
+                p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                
+                doc.add_paragraph(f"Criança: {crianca_rel}")
+                doc.add_paragraph(f"Ama Responsável: {ama_rel}")
+                doc.add_paragraph(f"Período: {periodo_txt}")
+                doc.add_paragraph("-" * 50)
+                
+                for idx, row in df_ativ.iterrows():
+                    doc.add_paragraph(f"Data do Registo: {row['data']}")
+                    doc.add_paragraph(f"Atividades Sociopedagógicas:\n{row['atividades_sociopedagogicas']}")
+                    doc.add_paragraph(f"Marcos de Aprendizagem:\n{row['marcos_aprendizagem']}")
+                    doc.add_paragraph(f"Ocorrências / Incidentes:\n{row['ocorrencias'] if row['ocorrencias'] else 'Nenhuma ocorrência registada.'}")
+                    doc.add_paragraph(f"Observações:\n{row['observacoes'] if row['observacoes'] else 'Sem observações.'}")
+                    
+                    if row['fotos_paths']:
+                        doc.add_paragraph("Registo Fotográfico:")
+                        for fpath in row['fotos_paths'].split(", "):
+                            if os.path.exists(fpath):
+                                try:
+                                    doc.add_picture(fpath, width=Inches(3.0))
+                                except Exception:
+                                    pass
+                    doc.add_paragraph("_" * 40)
+                
+                pasta_crianca = os.path.join("relatorios_criancas", crianca_rel.replace(' ', '_'))
+                os.makedirs(pasta_crianca, exist_ok=True)
+                nome_ficheiro_docx = f"Relatorio_{tipo_relatorio}_{datetime.today().strftime('%Y%m%d_%H%M%S')}.docx"
+                caminho_completo = os.path.join(pasta_crianca, nome_ficheiro_docx)
+                doc.save(caminho_completo)
+                
+                with open(caminho_completo, "rb") as f:
+                    docx_bytes = f.read()
+                    
+                st.download_button(
+                    label="📥 Descarregar Relatório Formatado com Fotos (.docx)",
+                    data=docx_bytes,
+                    file_name=nome_ficheiro_docx,
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    type="primary"
+                )
+
+    with aba_rel_2:
+        st.subheader("🕒 Visualização e Download do Mapa de Presenças (Entradas, Saídas e Responsáveis)")
+        st.caption("Consulte os registos efetuados no Check-in por criança e por mês, com formatação Excel profissional.")
+        
+        col_ex1, col_ex2 = st.columns(2)
+        crianca_excel = col_ex1.selectbox("Criança para o Mapa", get_criancas(), key="excel_crianca_rel")
+        
+        meses_dict = {
+            "Janeiro": "01", "Fevereiro": "02", "Março": "03", "Abril": "04",
+            "Maio": "05", "Junho": "06", "Julho": "07", "Agosto": "08",
+            "Setembro": "09", "Outubro": "10", "Novembro": "11", "Dezembro": "12"
+        }
+        col_m1, col_m2 = col_ex2.columns(2)
+        mes_nome = col_m1.selectbox("Mês", list(meses_dict.keys()), index=datetime.today().month - 1, key="mes_rel_mapa")
+        ano_sel = col_m2.number_input("Ano", min_value=2024, max_value=2030, value=datetime.today().year, key="ano_rel_mapa")
+        
+        mes_num = meses_dict[mes_nome]
+        ano_mes_str = f"{ano_sel}-{mes_num}"
+        
         conn = get_db_connection()
-        if tipo_relatorio == "Diário":
-            data_str = str(data_rel)
-            df_ativ = pd.read_sql_query("SELECT * FROM atividades WHERE crianca = %s AND data = %s", conn, params=(crianca_rel, data_str))
-            periodo_txt = f"Dia: {data_rel.strftime('%d/%m/%Y')}"
-        elif tipo_relatorio == "Semanal":
-            inicio_semana = data_rel - timedelta(days=data_rel.weekday())
-            fim_semana = inicio_semana + timedelta(days=6)
-            df_ativ = pd.read_sql_query("SELECT * FROM atividades WHERE crianca = %s AND data BETWEEN %s AND %s ORDER BY data DESC", conn, params=(crianca_rel, str(inicio_semana), str(fim_semana)))
-            periodo_txt = f"Semana de {inicio_semana.strftime('%d/%m/%Y')} a {fim_semana.strftime('%d/%m/%Y')}"
-        else:
-            ano_mes = data_rel.strftime('%Y-%m')
-            df_ativ = pd.read_sql_query("SELECT * FROM atividades WHERE crianca = %s AND data LIKE %s ORDER BY data DESC", conn, params=(crianca_rel, f"{ano_mes}%"))
-            periodo_txt = f"Mês: {data_rel.strftime('%B de %Y')}"
+        query_excel = "SELECT data, hora_entrada, hora_saida, notas AS responsavel_detalhe FROM assiduidade WHERE crianca = %s AND data LIKE %s ORDER BY data ASC"
+        df_assiduidade = pd.read_sql_query(query_excel, conn, params=(crianca_excel, f"{ano_mes_str}%"))
         conn.close()
-            
-        if df_ativ.empty:
-            st.info("Não existem registos de atividades para o período selecionado.")
+        
+        if df_assiduidade.empty:
+            st.info(f"Não existem registos de presenças para {crianca_excel} em {mes_nome} de {ano_sel}.")
         else:
-            doc = Document()
-            p_title = doc.add_paragraph()
-            r_title = p_title.add_run("RELATÓRIO DE ATIVIDADES E DESENVOLVIMENTO")
-            r_title.font.name = 'Arial'
-            r_title.font.size = Pt(14)
-            r_title.font.bold = True
-            r_title.font.color.rgb = RGBColor(31, 78, 121)
-            p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            st.markdown(f"#### 📋 Pré-visualização para: {crianca_excel} ({mes_nome} de {ano_sel})")
+            st.dataframe(df_assiduidade, use_container_width=True)
             
-            doc.add_paragraph(f"Criança: {crianca_rel}")
-            doc.add_paragraph(f"Ama Responsável: {ama_rel}")
-            doc.add_paragraph(f"Período: {periodo_txt}")
-            doc.add_paragraph("-" * 50)
-            
-            for idx, row in df_ativ.iterrows():
-                doc.add_paragraph(f"Data do Registo: {row['data']}")
-                doc.add_paragraph(f"Atividades Sociopedagógicas:\n{row['atividades_sociopedagogicas']}")
-                doc.add_paragraph(f"Marcos de Aprendizagem:\n{row['marcos_aprendizagem']}")
-                doc.add_paragraph(f"Ocorrências / Incidentes:\n{row['ocorrencias'] if row['ocorrencias'] else 'Nenhuma ocorrência registada.'}")
-                doc.add_paragraph(f"Observações:\n{row['observacoes'] if row['observacoes'] else 'Sem observações.'}")
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df_assiduidade.to_excel(writer, index=False, sheet_name='Presenças')
                 
-                if row['fotos_paths']:
-                    doc.add_paragraph("Registo Fotográfico:")
-                    for fpath in row['fotos_paths'].split(", "):
-                        if os.path.exists(fpath):
-                            try:
-                                doc.add_picture(fpath, width=Inches(3.0))
-                            except Exception:
-                                pass
-                doc.add_paragraph("_" * 40)
-            
-            pasta_crianca = os.path.join("relatorios_criancas", crianca_rel.replace(' ', '_'))
-            os.makedirs(pasta_crianca, exist_ok=True)
-            nome_ficheiro_docx = f"Relatorio_{tipo_relatorio}_{datetime.today().strftime('%Y%m%d_%H%M%S')}.docx"
-            caminho_completo = os.path.join(pasta_crianca, nome_ficheiro_docx)
-            doc.save(caminho_completo)
-            
-            with open(caminho_completo, "rb") as f:
-                docx_bytes = f.read()
+                workbook = writer.book
+                worksheet = writer.sheets['Presenças']
                 
+                from openpyxl.styles import Font, PatternFill, Alignment
+                
+                header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+                header_font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
+                align_center = Alignment(horizontal="center", vertical="center")
+                
+                for col_num in range(1, len(df_assiduidade.columns) + 1):
+                    cell = worksheet.cell(row=1, column=col_num)
+                    cell.fill = header_fill
+                    cell.font = header_font
+                    cell.alignment = align_center
+                
+                for col in worksheet.columns:
+                    max_len = max(len(str(cell.value or '')) for cell in col)
+                    col_letter = col[0].column_letter
+                    worksheet.column_dimensions[col_letter].width = max(max_len + 4, 18)
+
+            excel_data = output.getvalue()
             st.download_button(
-                label="📥 Descarregar Relatório Formatado com Fotos (.docx)",
-                data=docx_bytes,
-                file_name=nome_ficheiro_docx,
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                type="primary"
+                label=f"📥 Descarregar Mapa de Presenças Formatado ({mes_nome} {ano_sel}) (.xlsx)",
+                data=excel_data,
+                file_name=f"Mapa_Presencas_{crianca_excel.replace(' ', '_')}_{ano_sel}_{mes_num}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
+                key="btn_download_mapa_excel"
             )
 
 # ==========================================
-# 12. MÓDULO: SUPERVISÃO (EDUCADORA)
+# 11. MÓDULO: SUPERVISÃO (EDUCADORA)
 # ==========================================
 elif menu == "👩‍🏫 Supervisão (Educadora)":
     st.header("👩‍🏫 Painel da Educadora de Infância")
@@ -1183,7 +1149,7 @@ elif menu == "👩‍🏫 Supervisão (Educadora)":
             st.dataframe(df_ocorrencias, use_container_width=True)
 
 # ==========================================
-# 13. MÓDULO: GESTÃO DE UTILIZADORES
+# 12. MÓDULO: GESTÃO DE UTILIZADORES
 # ==========================================
 elif menu == "👥 Gestão de Utilizadores":
     st.header("👥 Gestão de Utilizadores e Contas de Acesso")
@@ -1283,7 +1249,7 @@ elif menu == "👥 Gestão de Utilizadores":
     st.dataframe(df_users, use_container_width=True)
 
 # ==========================================
-# 14. MÓDULO: MURAL DE RECADOS E COMUNICAÇÃO
+# 13. MÓDULO: MURAL DE RECADOS E COMUNICAÇÃO
 # ==========================================
 elif menu == "💬 Mural de Recados":
     st.header("💬 Mural de Recados e Comunicação")
